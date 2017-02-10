@@ -6,5 +6,5 @@ setup(
     name='chatty',
     version='0.0.1',
     package_dir={'chatty': 'chatty'},
-    packages=['chatty']
+    packages=['chatty', 'chatty.server', 'chatty.api']
 )
