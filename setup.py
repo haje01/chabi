@@ -3,8 +3,8 @@ from distutils.core import setup
 
 
 setup(
-    name='chatty',
+    name='chabi',
     version='0.0.1',
-    package_dir={'chatty': 'chatty'},
-    packages=['chatty']
+    package_dir={'chabi': 'chabi'},
+    packages=['chabi']
 )
