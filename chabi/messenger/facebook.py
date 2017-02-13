@@ -5,10 +5,13 @@ import json
 import requests
 from flask import Blueprint, current_app, request
 
+from chabi.util import debug
+
 
 facebook = Blueprint('handler', __name__)
 
 
+@facebook.route('/', methods=['GET'])
 @facebook.route('/webhook', methods=['GET'])
 def verify():
     # when the endpoint is registered as a webhook, it must echo back
@@ -27,7 +30,7 @@ def verify():
 def webhook():
     # endpoint for processing incoming messaging events
     data = request.get_json()
-    print(data)
+    debug(data)
 
     if data["object"] == "page":
 
@@ -44,8 +47,8 @@ def webhook():
                     recipient_id = messaging_event["recipient"]["id"]
                     # the message's text
                     message_text = messaging_event["message"]["text"]
-                    print("sender {}, recipient {}, message "
-                          "{}".format(sender_id, recipient_id, message_text))
+                    debug("sender {}, recipient {}, message {}".
+                          format(sender_id, recipient_id, message_text))
 
                     send_message(sender_id, "got it, thanks!")
 
@@ -59,12 +62,12 @@ def webhook():
                 if messaging_event.get("postback"):
                     pass
 
-    return "ok", 200
+    return "OK", 200
 
 
 def send_message(recipient_id, message_text):
 
-    print("sending message to {recipient}: "
+    debug("sending message to {recipient}: "
           "{text}".format(recipient=recipient_id, text=message_text))
 
     params = {
@@ -84,12 +87,12 @@ def send_message(recipient_id, message_text):
     r = requests.post("https://graph.facebook.com/v2.6/me/messages",
                       params=params, headers=headers, data=data)
     if r.status_code != 200:
-        print(r.status_code)
-        print(r.text)
+        debug(r.status_code)
+        debug(r.text)
 
 
-def init_facebook_app(flask_app, verify_token, page_access_token):
-    flask_app.verify_token = verify_token
+def init_facebook_app(flask_app, page_access_token, verify_token):
     flask_app.page_access_token = page_access_token
+    flask_app.verify_token = verify_token
     flask_app.register_blueprint(facebook)
     return flask_app
