@@ -1,11 +1,10 @@
 import logging
-from logging import StreamHandler, Formatter
+from logging import Formatter
 from logging.handlers import RotatingFileHandler
 
-from flask import current_app
 
-
-def init_logger(app, filename, log_level, werkzeug_log=True):
+def init_logger(app, filename, log_level, max_bytes=1048576, backup_cnt=10,
+                werkzeug_log=True):
     formatter = Formatter('%(asctime)s %(pathname)s:%(lineno)d %(levelname)s -'
                           ' %(message)s', '%Y-%m-%d %H:%M:%S.%03d')
 
@@ -14,8 +13,8 @@ def init_logger(app, filename, log_level, werkzeug_log=True):
     if werkzeug_log:
         wlog.setLevel(log_level)
 
-    handler = RotatingFileHandler('logs/{}'.format(filename), maxBytes=10000,
-                                  backupCount=2)
+    handler = RotatingFileHandler('logs/{}'.format(filename),
+                                  maxBytes=max_bytes, backupCount=backup_cnt)
     handler.setFormatter(formatter)
     handler.setLevel(log_level)
     app.logger.addHandler(handler)
