@@ -228,10 +228,10 @@ def test_apiai_webhook(sess):
     access_token = os.environ.get('APIAI_API_ACCESS_TOKEN')
     assert access_token is not None
 
-    def handle_analyzed(data):
+    def do_action(data):
         return dict(result=data['foo'])
 
-    app = init_apiai_app(Flask(__name__), access_token, handle_analyzed)
+    app = init_apiai_app(Flask(__name__), access_token, do_action)
 
     with app.test_client() as c:
         r = c.get('/apiai')
@@ -255,13 +255,13 @@ def init_dummy_chatbot_app(app):
     def handle_unknown(res):
         return False, res
 
-    def handle_analyzed(data):
+    def do_action(data):
         return dict(speech='success')
 
     app.analyze_message = analyze_message
     app.handle_incomplete = handle_incomplete
     app.handle_unknown = handle_unknown
-    app.handle_analyzed = handle_analyzed
+    app.do_action = do_action
     return app
 
 

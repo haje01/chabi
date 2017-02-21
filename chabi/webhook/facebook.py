@@ -35,14 +35,19 @@ def verify():
     return "OK", 200
 
 
-def analyze_and_handle_message(sender_id, mevent):
-    """Analyze message and handle the result by App handler.
+def analyze_and_action(sender_id, mevent):
+    """Analyze message and do action for the result.
 
     Note:
-        `analyze_message` of ChatBot Wrapper, analyzes messages via ChatBot API.
+        `analyze_message` of ChatBot Wrapper, analyzes messages via ChatBot
+            API.
         `handle_incomplete` of ChatBot Wrapper, handles entity filling message.
-        `handle_unknown` of ChatBot Wrapper, handles unknown messages from user.
-        `handle_analyzed` of App, handles result from ChatBot API.
+        `handle_unknown` of ChatBot Wrapper, handles unknown messages from
+            user.
+        `do_action` of App, do action for analyzed result from ChatBot API.
+
+    Returns:
+        dict: Handled or action result (contains return message)
     """
     # the message's text
     msg_text = mevent["message"]["text"]
@@ -56,27 +61,47 @@ def analyze_and_handle_message(sender_id, mevent):
         res = res.read()
     data = json.loads(res)
 
+    hresult = None
+    assert hasattr(ca, 'handle_incomplete')
+    assert hasattr(ca, 'handle_unknown')
+    assert hasattr(ca, 'do_action')
+
+    # check entity filling
     incomplete, res = ca.handle_incomplete(data)
     if incomplete:
         ca.logger.info("incomplete message: {}".format(res))
-        return res
+        hresult = res
 
-    unknown, res = ca.handle_unknown(data)
-    if unknown:
-        ca.logger.info("unknown message: {}".format(res))
-        return res
+    # check unknown message
+    if hresult is None:
+        unknown, res = ca.handle_unknown(data)
+        if unknown:
+            ca.logger.info("unknown message: {}".format(res))
+            hresult = res
 
-    st = time.time()
-    assert hasattr(ca, 'handle_analyzed')
-    ca.logger.debug('handling start: {}'.format(data))
-    res = ca.handle_analyzed(data)
-    ca.logger.debug("handled result: {}".format(res))
-    ca.logger.debug('handling elapsed: {0:.2f}'.format(time.time() - st))
+    # check action needs to be done
+    if hresult is None:
+        st = time.time()
+        if len(data['result']['action']) > 0:
+            action = data['result']['action']
+            ca.logger.debug("action '{}' start: {}".format(action, data))
+            res = ca.do_action(data)
+            ca.logger.debug("action result: {}".format(res))
+            ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
+            hresult = res
 
-    return res
+    # normal reply
+    if hresult is None:
+        hresult = data['result']['fulfillment']
+
+    if hresult is not None:
+        send_message(sender_id, hresult)
+
+    return hresult
 
 
 def _webhook_handle_page(data):
+    results = []
     for entry in data["entry"]:
         for messaging_event in entry["messaging"]:
             ca.logger.debug("Webhook: {}".format(messaging_event))
@@ -92,8 +117,10 @@ def _webhook_handle_page(data):
 
             # someone sent us a message
             if messaging_event.get("message"):
-                res = analyze_and_handle_message(sender_id, messaging_event)
-                send_message(sender_id, res)
+                res = analyze_and_action(sender_id, messaging_event)
+                results.append(res)
+                if res is not None:
+                    send_message(sender_id, res)
 
             # delivery confirmation
             if messaging_event.get("delivery"):
@@ -104,6 +131,7 @@ def _webhook_handle_page(data):
             # user clicked/tapped "postback" button in earlier message
             if messaging_event.get("postback"):
                 pass
+    return results
 
 
 @facebook.route('/facebook', methods=['POST'])
@@ -111,49 +139,38 @@ def webhook():
     """Webhook for Facebook message."""
     # endpoint for processing incoming messaging events
     data = request.get_json()
+    results = None
     if data is not None:
         ca.logger.debug("Request:")
         ca.logger.debug(json.dumps(data, indent=4))
 
         if 'object' in data:
             if data["object"] == "page":
-                _webhook_handle_page(data)
+                results = _webhook_handle_page(data)
 
-    return "", 200
+    return json.dumps(results), 200
 
 
 def send_reply_action(recipient_id):
     data = {
         'sender_action': 'typing_on'
     }
-    _send_data(recipient_id, data)
+    send_data(recipient_id, data)
 
 
 def send_message(recipient_id, res):
     data = {
         'message': {'text': res['speech']}
     }
-    #tres = type(res)
-    #if tres is dict:
-        #if 'data' in res:
-            #if 'facebook' in res['data']:
-                #fbdata = res['data']['facebook']
-                #if 'attachment' in fbdata:
-                    #data['attachment'] = fbdata['attachment']
-                #else:
-                    #data['message'] = fbdata['text']
-                    #ca.logger.warning('No attachment in facebook data: {}'.format(fbdata))
-            #else:
-                #ca.logger.warning('No facebook data: {}'.format(res['data']))
-        #else:
-            #ca.logger.warning('No data in res: {}'.format(res))
-    #elif tres is string:
-        #data['message'] = {'text': res }
-
-    _send_data(recipient_id, data)
+    send_data(recipient_id, data)
 
 
-def _send_data(recipient_id, data):
+def send_data(recipient_id, data):
+    if ca.page_access_token is None:
+        # Usually test case
+        ca.logger.warning("PAGE_ACCESS_TOKEN is None, Skip sending.")
+        return
+
     ca.logger.debug("sending message to {recipient}: {data}".format(
         recipient=recipient_id, data=data))
 
@@ -167,7 +184,7 @@ def _send_data(recipient_id, data):
     data['recipient'] = {
         "id": recipient_id
     }
-    ca.logger.debug("FB _send_data: {}".format(data))
+    ca.logger.debug("FB send_data: {}".format(data))
     r = requests.post("https://graph.facebook.com/v2.6/me/messages",
                       params=params, headers=headers, data=json.dumps(data))
     if r.status_code != 200:
