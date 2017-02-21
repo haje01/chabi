@@ -32,33 +32,56 @@ def handle_incomplete(data):
     return False, None
 
 
-def init_apiai_app(flask_app, api_access_token, process_message):
+def handle_unknown(data):
+    if data['result']['action'] == 'input.unknown':
+        ca.logger.debug("Unknown {}".format(data))
+        ff = data['result']['fulfillment']
+        res = {'speech': ff['speech']}
+        return True, res
+
+
+def init_apiai_app(flask_app, api_access_token, handle_analyzed):
     flask_app.register_blueprint(apiai)
 
     assert not hasattr(flask_app, 'api_access_token')
     flask_app.api_access_token = api_access_token
     assert not hasattr(flask_app, 'analyze_message')
     flask_app.analyze_message = analyze_message
-    assert not hasattr(flask_app, 'process_message')
-    flask_app.process_message = process_message
+    assert not hasattr(flask_app, 'handle_analyzed')
+    flask_app.handle_analyzed = handle_analyzed
     assert not hasattr(flask_app, 'handle_incomplete')
     flask_app.handle_incomplete = handle_incomplete
+    assert not hasattr(flask_app, 'handle_unknown')
+    flask_app.handle_unknown = handle_unknown
 
     return flask_app
 
 
 @apiai.route('/apiai', methods=['GET', 'POST'])
 def webhook():
-    # ca.logger.debug(request.args)
+    """"Webhook for API.AI.
+
+    Note:
+        This end point is for direct request from API.AI(development phase).
+        Not from real messenger requests. Messengers have their own end point,
+        where requests to API.AI are made by ApiAI request method.
+
+    """
     if request.method == 'GET':
         return 'OK', 200
 
     data = request.get_json(silent=True, force=True)
-    # ca.logger.debug("Request:")
-    # ca.logger.debug(json.dumps(data, indent=4))
 
-    assert hasattr(ca, 'process_message')
-    res = ca.process_message(data)
+    if 'result' in data:
+        if 'action' in data['result']:
+            if data['result']['action'] == 'input.unknown':
+                res = data['result']['fullfillment']
+            else:
+                assert hasattr(ca, 'handle_analyzed')
+                res = ca.handle_analyzed(data)
+    else:
+        # Test purpose
+        res = ca.handle_analyzed(data)
 
     ca.logger.debug("Response:")
     res = json.dumps(res, indent=4)

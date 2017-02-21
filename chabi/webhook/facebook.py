@@ -16,6 +16,10 @@ def init_facebook_app(flask_app, page_access_token, verify_token):
 
 
 @facebook.route('/', methods=['GET'])
+def hello():
+    return "OK", 200
+
+
 @facebook.route('/facebook', methods=['GET'])
 def verify():
     """Verify Facebook webhook registration."""
@@ -31,29 +35,75 @@ def verify():
     return "OK", 200
 
 
-def analyze_and_process_message(sender_id, mevent):
+def analyze_and_handle_message(sender_id, mevent):
+    """Analyze message and handle the result by App handler.
+
+    Note:
+        `analyze_message` of ChatBot Wrapper, analyzes messages via ChatBot API.
+        `handle_incomplete` of ChatBot Wrapper, handles entity filling message.
+        `handle_unknown` of ChatBot Wrapper, handles unknown messages from user.
+        `handle_analyzed` of App, handles result from ChatBot API.
+    """
     # the message's text
-    message_text = mevent["message"]["text"]
+    msg_text = mevent["message"]["text"]
 
     st = time.time()
     assert hasattr(ca, 'analyze_message')
-    ca.logger.debug('analyzing start: {}'.format(message_text))
-    res = ca.analyze_message(sender_id, message_text)
+    ca.logger.debug('analyzing start: {}'.format(msg_text))
+    res = ca.analyze_message(sender_id, msg_text)
     ca.logger.debug('analyzing elapsed: {0:.2f}'.format(time.time() - st))
-    data = json.loads(res.read())
+    if type(res) is not str:
+        res = res.read()
+    data = json.loads(res)
+
     incomplete, res = ca.handle_incomplete(data)
     if incomplete:
         ca.logger.info("incomplete message: {}".format(res))
         return res
 
+    unknown, res = ca.handle_unknown(data)
+    if unknown:
+        ca.logger.info("unknown message: {}".format(res))
+        return res
+
     st = time.time()
-    assert hasattr(ca, 'process_message')
-    ca.logger.debug('processing start: {}'.format(data))
-    res = ca.process_message(data)
-    ca.logger.debug("processed message: {}".format(res))
-    ca.logger.debug('processing elapsed: {0:.2f}'.format(time.time() - st))
+    assert hasattr(ca, 'handle_analyzed')
+    ca.logger.debug('handling start: {}'.format(data))
+    res = ca.handle_analyzed(data)
+    ca.logger.debug("handled result: {}".format(res))
+    ca.logger.debug('handling elapsed: {0:.2f}'.format(time.time() - st))
 
     return res
+
+
+def _webhook_handle_page(data):
+    for entry in data["entry"]:
+        for messaging_event in entry["messaging"]:
+            ca.logger.debug("Webhook: {}".format(messaging_event))
+
+            # the facebook ID of the person sending you the message
+            sender_id = messaging_event["sender"]["id"]
+            # the recipient's ID, which should be your page's
+            # facebook ID
+            recipient_id = messaging_event["recipient"]["id"]  # NOQA
+
+            # send reply action first
+            send_reply_action(sender_id)
+
+            # someone sent us a message
+            if messaging_event.get("message"):
+                res = analyze_and_handle_message(sender_id, messaging_event)
+                send_message(sender_id, res)
+
+            # delivery confirmation
+            if messaging_event.get("delivery"):
+                pass
+            # optin confirmation
+            if messaging_event.get("optin"):
+                pass
+            # user clicked/tapped "postback" button in earlier message
+            if messaging_event.get("postback"):
+                pass
 
 
 @facebook.route('/facebook', methods=['POST'])
@@ -61,41 +111,15 @@ def webhook():
     """Webhook for Facebook message."""
     # endpoint for processing incoming messaging events
     data = request.get_json()
-    ca.logger.debug("Request:")
-    ca.logger.debug(json.dumps(data, indent=4))
+    if data is not None:
+        ca.logger.debug("Request:")
+        ca.logger.debug(json.dumps(data, indent=4))
 
-    if data["object"] == "page":
+        if 'object' in data:
+            if data["object"] == "page":
+                _webhook_handle_page(data)
 
-        for entry in data["entry"]:
-            for messaging_event in entry["messaging"]:
-                ca.logger.debug("Webhook: {}".format(messaging_event))
-
-                # the facebook ID of the person sending you the message
-                sender_id = messaging_event["sender"]["id"]
-                # the recipient's ID, which should be your page's
-                # facebook ID
-                recipient_id = messaging_event["recipient"]["id"]
-
-                # send reply action first
-                send_reply_action(sender_id)
-
-                # someone sent us a message
-                if messaging_event.get("message"):
-                    res = analyze_and_process_message(sender_id,
-                                                      messaging_event)
-                    send_message(sender_id, res)
-
-                # delivery confirmation
-                if messaging_event.get("delivery"):
-                    pass
-                # optin confirmation
-                if messaging_event.get("optin"):
-                    pass
-                # user clicked/tapped "postback" button in earlier message
-                if messaging_event.get("postback"):
-                    pass
-
-    return "OK", 200
+    return "", 200
 
 
 def send_reply_action(recipient_id):
