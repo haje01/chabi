@@ -60,16 +60,18 @@ class ApiAI(ChatbotBase):
         return response
 
     def handle_incomplete(self, data):
-        if data['result']['actionIncomplete']:
-            ff = data['result']['fulfillment']
+        result = data['result']
+        if 'actionIncomplete' in result:
+            ff = result['fulfillment']
             res = {'speech': ff['speech']}
             return True, res
         return False, None
 
     def handle_unknown(self, data):
-        if data['result']['action'] == 'input.unknown':
+        result = data['result']
+        if 'action' in result and result['action'] == 'input.unknown':
             self.logger.debug("Unknown {}".format(data))
-            ff = data['result']['fulfillment']
+            ff = result['fulfillment']
             res = {'speech': ff['speech']}
             return True, res
         return False, None
