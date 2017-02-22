@@ -64,3 +64,37 @@ def analyze_and_action(sender_id, mevent):
         hresult = data['result']['fulfillment']
 
     return hresult
+
+
+class ChatbotBase(object):
+    def __init__(self, flask_app, blueprint, access_token):
+        flask_app.chatbot = self
+        flask_app.register_blueprint(blueprint)
+
+        self.access_token = access_token
+
+    def request_analyze(self, sender_id, msg):
+        raise NotImplementedError()
+
+    def handle_unknown(self):
+        raise NotImplementedError()
+
+    def handle_incomplete(self):
+        raise NotImplementedError()
+
+
+class MessengerBase(object):
+
+    def __init__(self, flask_app, blueprint, page_access_token, verify_token):
+        flask_app.msgn = self
+        flask_app.register_blueprint(blueprint)
+
+        self.page_access_token = page_access_token
+        self.verify_token = verify_token
+
+
+class UserAppBase(object):
+    def __init__(self, flask_app, messenger, chatbot):
+        flask_app.uapp = self
+        self.msgn = messenger
+        self.chatbot = chatbot

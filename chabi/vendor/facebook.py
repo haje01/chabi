@@ -1,27 +1,21 @@
-"""API.AI Webhook."""
+"""Messenger API implementation of Facebook."""
 import json
 
 import requests
 from flask import Blueprint, current_app as ca, request
 
 from chabi import analyze_and_action
+from chabi.vendor import MessengerAPI
 
-facebook = Blueprint('facebook', __name__)
-
-
-def init_facebook_app(flask_app, page_access_token, verify_token):
-    flask_app.page_access_token = page_access_token
-    flask_app.verify_token = verify_token
-    flask_app.register_blueprint(facebook)
-    return flask_app
+blueprint = Blueprint('facebook', __name__)
 
 
-@facebook.route('/', methods=['GET'])
+@blueprint.route('/', methods=['GET'])
 def hello():
     return "OK", 200
 
 
-@facebook.route('/facebook', methods=['GET'])
+@blueprint.route('/facebook', methods=['GET'])
 def verify():
     """Verify Facebook webhook registration."""
     # when the endpoint is registered as a webhook, it must echo back
@@ -29,11 +23,28 @@ def verify():
     if request.args.get("hub.mode") == "subscribe" and\
             request.args.get("hub.challenge"):
         if not request.args.get("hub.verify_token") ==\
-                ca.verify_token:
+                ca.msgn.verify_token:
             return "Verification token mismatch", 403
         return request.args["hub.challenge"], 200
 
     return "OK", 200
+
+
+@blueprint.route('/facebook', methods=['POST'])
+def webhook():
+    """Webhook for Facebook message."""
+    # endpoint for processing incoming messaging events
+    data = request.get_json()
+    results = None
+    if data is not None:
+        ca.logger.debug("Request:")
+        ca.logger.debug(json.dumps(data, indent=4))
+
+        if 'object' in data:
+            if data["object"] == "page":
+                results = _webhook_handle_page(data)
+
+    return json.dumps(results), 200
 
 
 def _webhook_handle_page(data):
@@ -70,21 +81,31 @@ def _webhook_handle_page(data):
     return results
 
 
-@facebook.route('/facebook', methods=['POST'])
-def webhook():
-    """Webhook for Facebook message."""
-    # endpoint for processing incoming messaging events
-    data = request.get_json()
-    results = None
-    if data is not None:
-        ca.logger.debug("Request:")
-        ca.logger.debug(json.dumps(data, indent=4))
+def send_data(recipient_id, data):
+    if ca.msgn.page_access_token is None:
+        # Usually test case
+        ca.logger.warning("PAGE_ACCESS_TOKEN is None, Skip sending.")
+        return
 
-        if 'object' in data:
-            if data["object"] == "page":
-                results = _webhook_handle_page(data)
+    ca.logger.debug("sending message to {recipient}: {data}".format(
+        recipient=recipient_id, data=data))
 
-    return json.dumps(results), 200
+    params = {
+        "access_token": ca.msgn.page_access_token
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    data['recipient'] = {
+        "id": recipient_id
+    }
+    ca.logger.debug("FB send_data: {}".format(data))
+    r = requests.post("https://graph.facebook.com/v2.6/me/messages",
+                      params=params, headers=headers, data=json.dumps(data))
+    if r.status_code != 200:
+        ca.logger.error(r.status_code)
+        ca.logger.error(r.text)
 
 
 def send_reply_action(recipient_id):
@@ -101,28 +122,13 @@ def send_message(recipient_id, res):
     send_data(recipient_id, data)
 
 
-def send_data(recipient_id, data):
-    if ca.page_access_token is None:
-        # Usually test case
-        ca.logger.warning("PAGE_ACCESS_TOKEN is None, Skip sending.")
-        return
+class Facebook(MessengerAPI):
 
-    ca.logger.debug("sending message to {recipient}: {data}".format(
-        recipient=recipient_id, data=data))
+    def __init__(self, flask_app, page_access_token, verify_token):
+        super(Facebook, self).__init__(flask_app, blueprint, page_access_token,
+                                       verify_token)
 
-    params = {
-        "access_token": ca.page_access_token
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
 
-    data['recipient'] = {
-        "id": recipient_id
-    }
-    ca.logger.debug("FB send_data: {}".format(data))
-    r = requests.post("https://graph.facebook.com/v2.6/me/messages",
-                      params=params, headers=headers, data=json.dumps(data))
-    if r.status_code != 200:
-        ca.logger.error(r.status_code)
-        ca.logger.error(r.text)
+def init_facebook(flask_app, access_token, verify_token):
+    Facebook(flask_app, access_token, verify_token)
+    return flask_app
