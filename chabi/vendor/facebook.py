@@ -70,6 +70,7 @@ def _webhook_handle_page(data):
                     send_message(sender_id, res)
                 else:
                     ca.logger.warning("Can't send message: {}".format(res))
+                    send_message(sender_id, dict(speech='Oops.'))
 
             # delivery confirmation
             if messaging_event.get("delivery"):
