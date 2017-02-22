@@ -66,8 +66,10 @@ def _webhook_handle_page(data):
             if messaging_event.get("message"):
                 res = analyze_and_action(sender_id, messaging_event)
                 results.append(res)
-                if res is not None:
+                if res is not None and len(res['speech']) > 0:
                     send_message(sender_id, res)
+                else:
+                    ca.logger.warning("Can't send message: {}".format(res))
 
             # delivery confirmation
             if messaging_event.get("delivery"):
