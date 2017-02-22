@@ -2,4 +2,4 @@ __pycache__
 *.egg-info
 .cache
 .ropeproject
-*_test_env.sh
+test_env.sh
