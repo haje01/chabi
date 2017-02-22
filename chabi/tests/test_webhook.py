@@ -8,6 +8,11 @@ from flask import Flask
 import pytest
 import apiai
 
+from chabi import init_action
+from chabi.vendor.apiai import init_apiai
+from chabi.vendor.facebook import init_facebook
+from chabi.vendor.dummy import init_dummy_chatbot
+
 
 @pytest.fixture
 def sess():
@@ -223,15 +228,14 @@ def test_apiai_api(sess):
 
 def test_apiai_webhook(sess):
     """API.AI App test."""
-    from chabi.webhook import init_apiai_app
-
     access_token = os.environ.get('APIAI_API_ACCESS_TOKEN')
     assert access_token is not None
 
     def do_action(data):
         return dict(result=data['foo'])
 
-    app = init_apiai_app(Flask(__name__), access_token, do_action)
+    app = init_apiai(Flask(__name__), access_token)
+    app = init_action(app, do_action)
 
     with app.test_client() as c:
         r = c.get('/apiai')
@@ -245,33 +249,10 @@ def test_apiai_webhook(sess):
         assert 'result' in r.data.decode('utf8')
 
 
-def init_dummy_chatbot_app(app):
-    def analyze_message(sender, msg):
-        return '{"analyzed": true}'
-
-    def handle_incomplete(res):
-        return False, res
-
-    def handle_unknown(res):
-        return False, res
-
-    def do_action(data):
-        return dict(speech='success')
-
-    app.analyze_message = analyze_message
-    app.handle_incomplete = handle_incomplete
-    app.handle_unknown = handle_unknown
-    app.do_action = do_action
-    return app
-
-
 def test_facebook():
     """Facebook webhook test."""
-    from chabi.webhook import init_facebook_app
-
-    app = init_facebook_app(Flask(__name__), 'access_token',
-                            'verify_token')
-    app = init_dummy_chatbot_app(app)
+    app = init_facebook(Flask(__name__), 'access_token', 'verify_token')
+    app = init_dummy_chatbot(app, 'cb_access_token')
 
     # default GET
     with app.test_client() as c:

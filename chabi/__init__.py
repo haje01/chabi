@@ -8,7 +8,7 @@ def analyze_and_action(sender_id, mevent):
     """Analyze message and do action for the result.
 
     Note:
-        `analyze_message` of ChatBot Wrapper, analyzes messages via ChatBot
+        `request_analyze` of ChatBot Wrapper, analyzes messages via ChatBot
             API.
         `handle_incomplete` of ChatBot Wrapper, handles entity filling message.
         `handle_unknown` of ChatBot Wrapper, handles unknown messages from
@@ -22,28 +22,27 @@ def analyze_and_action(sender_id, mevent):
     msg_text = mevent["message"]["text"]
 
     st = time.time()
-    assert hasattr(ca, 'analyze_message')
     ca.logger.debug('analyzing start: {}'.format(msg_text))
-    res = ca.analyze_message(sender_id, msg_text)
+    res = ca.chatbot.request_analyze(sender_id, msg_text)
     ca.logger.debug('analyzing elapsed: {0:.2f}'.format(time.time() - st))
+    if res is None:
+        return
+
     if type(res) is not str:
         res = res.read()
     data = json.loads(res)
 
     hresult = None
-    assert hasattr(ca, 'handle_incomplete')
-    assert hasattr(ca, 'handle_unknown')
-    assert hasattr(ca, 'do_action')
 
     # check entity filling
-    incomplete, res = ca.handle_incomplete(data)
+    incomplete, res = ca.chatbot.handle_incomplete(data)
     if incomplete:
         ca.logger.info("incomplete message: {}".format(res))
         hresult = res
 
     # check unknown message
     if hresult is None:
-        unknown, res = ca.handle_unknown(data)
+        unknown, res = ca.chatbot.handle_unknown(data)
         if unknown:
             ca.logger.info("unknown message: {}".format(res))
             hresult = res
@@ -64,3 +63,43 @@ def analyze_and_action(sender_id, mevent):
         hresult = data['result']['fulfillment']
 
     return hresult
+
+
+class CommonBase(object):
+
+    def __init__(self, flask_app):
+        self.logger = flask_app.logger
+
+
+class ChatbotBase(CommonBase):
+    def __init__(self, flask_app, blueprint, access_token):
+        super(ChatbotBase, self).__init__(flask_app)
+        flask_app.chatbot = self
+        flask_app.register_blueprint(blueprint)
+
+        self.access_token = access_token
+
+    def request_analyze(self, sender_id, msg):
+        raise NotImplementedError()
+
+    def handle_unknown(self):
+        raise NotImplementedError()
+
+    def handle_incomplete(self):
+        raise NotImplementedError()
+
+
+class MessengerBase(CommonBase):
+
+    def __init__(self, flask_app, blueprint, page_access_token, verify_token):
+        super(MessengerBase, self).__init__(flask_app)
+        flask_app.msgn = self
+        flask_app.register_blueprint(blueprint)
+
+        self.page_access_token = page_access_token
+        self.verify_token = verify_token
+
+
+def init_action(flask_app, do_action):
+    flask_app.do_action = do_action
+    return flask_app
