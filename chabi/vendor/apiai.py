@@ -5,7 +5,7 @@ import json
 from flask import Blueprint, current_app as ca, request, make_response
 import apiai as api_ai
 
-from chabi.vendor import ChatbotAPI
+from chabi import ChatbotBase
 
 
 blueprint = Blueprint('apiai', __name__)
@@ -31,12 +31,11 @@ def webhook():
         if 'action' in data['result']:
             if data['result']['action'] == 'input.unknown':
                 res = data['result']['fullfillment']
-                res = ca.uapp.do_action(data)
+                res = ca.do_action(data)
                 action_done = True
 
     if not action_done:
-        assert hasattr(ca.uapp, 'do_action')
-        res = ca.uapp.do_action(data)
+        res = ca.do_action(data)
 
     ca.logger.debug("Response:")
     res = json.dumps(res, indent=4)
@@ -46,44 +45,36 @@ def webhook():
     return r
 
 
-def request_analyze(sender_id, msg):
-    token = ca.chatbot.api_access_token
-    ai = api_ai.ApiAI(token)
-    request = ai.text_request()
-    request.lang = 'en'
-    request.session_id = sender_id
-    request.query = msg
-    response = request.getresponse()
-    return response
-
-
-def handle_incomplete(data):
-    if data['result']['actionIncomplete']:
-        ff = data['result']['fulfillment']
-        res = {'speech': ff['speech']}
-        return True, res
-    return False, None
-
-
-def handle_unknown(data):
-    if data['result']['action'] == 'input.unknown':
-        ca.logger.debug("Unknown {}".format(data))
-        ff = data['result']['fulfillment']
-        res = {'speech': ff['speech']}
-        return True, res
-    return False, None
-
-
-class ApiAI(ChatbotAPI):
+class ApiAI(ChatbotBase):
     def __init__(self, flask_app, access_token):
         super(ApiAI, self).__init__(flask_app, blueprint, access_token)
+
+    def request_analyze(self, sender_id, msg):
+        token = self.access_token
+        ai = api_ai.ApiAI(token)
+        request = ai.text_request()
+        request.lang = 'en'
+        request.session_id = sender_id
+        request.query = msg
+        response = request.getresponse()
+        return response
+
+    def handle_incomplete(self, data):
+        if data['result']['actionIncomplete']:
+            ff = data['result']['fulfillment']
+            res = {'speech': ff['speech']}
+            return True, res
+        return False, None
+
+    def handle_unknown(self, data):
+        if data['result']['action'] == 'input.unknown':
+            self.logger.debug("Unknown {}".format(data))
+            ff = data['result']['fulfillment']
+            res = {'speech': ff['speech']}
+            return True, res
+        return False, None
 
 
 def init_apiai(flask_app, access_token):
     ApiAI(flask_app, access_token)
-    return flask_app
-
-
-def init_user_app(flask_app, user_do_action):
-    flask_app.do_action = user_do_action
     return flask_app

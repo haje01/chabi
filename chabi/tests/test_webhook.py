@@ -8,6 +8,11 @@ from flask import Flask
 import pytest
 import apiai
 
+from chabi import init_action
+from chabi.vendor.apiai import init_apiai
+from chabi.vendor.facebook import init_facebook
+from chabi.vendor.dummy import init_dummy_chatbot
+
 
 @pytest.fixture
 def sess():
@@ -223,8 +228,6 @@ def test_apiai_api(sess):
 
 def test_apiai_webhook(sess):
     """API.AI App test."""
-    from chabi.vendor.apiai import init_apiai
-
     access_token = os.environ.get('APIAI_API_ACCESS_TOKEN')
     assert access_token is not None
 
@@ -232,6 +235,7 @@ def test_apiai_webhook(sess):
         return dict(result=data['foo'])
 
     app = init_apiai(Flask(__name__), access_token)
+    app = init_action(app, do_action)
 
     with app.test_client() as c:
         r = c.get('/apiai')
@@ -247,9 +251,6 @@ def test_apiai_webhook(sess):
 
 def test_facebook():
     """Facebook webhook test."""
-    from chabi.vendor.facebook import init_facebook
-    from chabi.vendor.dummy import init_dummy_chatbot
-
     app = init_facebook(Flask(__name__), 'access_token', 'verify_token')
     app = init_dummy_chatbot(app, 'cb_access_token')
 

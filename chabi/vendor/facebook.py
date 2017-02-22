@@ -5,7 +5,7 @@ import requests
 from flask import Blueprint, current_app as ca, request
 
 from chabi import analyze_and_action
-from chabi.vendor import MessengerAPI
+from chabi import MessengerBase
 
 blueprint = Blueprint('facebook', __name__)
 
@@ -122,7 +122,7 @@ def send_message(recipient_id, res):
     send_data(recipient_id, data)
 
 
-class Facebook(MessengerAPI):
+class Facebook(MessengerBase):
 
     def __init__(self, flask_app, page_access_token, verify_token):
         super(Facebook, self).__init__(flask_app, blueprint, page_access_token,
