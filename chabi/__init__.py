@@ -31,8 +31,10 @@ def analyze_and_action(sender_id, msg_text):
 
     # check action needs to be done
     st = time.time()
-    action = data['result']['action']
-    if len(action) > 0 and not data['result']['actionIncomplete']:
+    result = data['result']
+    action = result['action']
+    if len(action) > 0 and 'actionIncomplete' in result and\
+            not result['actionIncomplete']:
         ca.logger.debug("action '{}' start: {}".format(action, data))
         res = ca.do_action(data)
         ca.logger.debug("action result: {}".format(res))
@@ -52,7 +54,7 @@ def analyze_and_action(sender_id, msg_text):
         return res
 
     # normal reply
-    return data['result']['fulfillment']
+    return result['fulfillment']
 
 
 class CommonBase(object):
