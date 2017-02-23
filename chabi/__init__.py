@@ -31,8 +31,9 @@ def analyze_and_action(sender_id, msg_text):
 
     # check action needs to be done
     st = time.time()
-    if len(data['result']['action']) > 0:
-        action = data['result']['action']
+    action = data['result']['action']
+    action_incomp = data['result']['actionIncomplete']
+    if len(action) > 0 and not action_incomp:
         ca.logger.debug("action '{}' start: {}".format(action, data))
         res = ca.do_action(data)
         ca.logger.debug("action result: {}".format(res))
