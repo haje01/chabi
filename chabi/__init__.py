@@ -54,7 +54,11 @@ def analyze_and_action(sender_id, msg_text):
         return res
 
     # normal reply
-    return result['fulfillment']
+    if 'fulfillment' in result and len(result['fulfillment']) > 0:
+        msg = result['fulfillment']
+    else:
+        msg = None
+    return msg
 
 
 class CommonBase(object):

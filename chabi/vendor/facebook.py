@@ -72,6 +72,7 @@ def send_data(recipient_id, data):
     if r.status_code != 200:
         ca.logger.error(r.status_code)
         ca.logger.error(r.text)
+    return r
 
 
 class Facebook(MessengerBase):
@@ -90,13 +91,13 @@ class Facebook(MessengerBase):
         data = {
             'message': {'text': res['speech']}
         }
-        send_data(recipient_id, data)
+        return send_data(recipient_id, data)
 
     def send_reply_action(self, recipient_id):
         data = {
             'sender_action': 'typing_on'
         }
-        send_data(recipient_id, data)
+        return send_data(recipient_id, data)
 
     def reply_text_message(self, app, sender_id, msg_text):
         """Reply user message."""
@@ -105,8 +106,9 @@ class Facebook(MessengerBase):
         if res is not None and len(res['speech']) > 0:
             self.send_message(sender_id, res)
         else:
-            app.logger.warning("Can't send message: {}".format(res))
-            self.send_message(sender_id, dict(speech='Oops.'))
+            app.logger.warning("Fail to analyzed message: {}".format(msg_text))
+            res = dict(speech='Oops.')
+            self.send_message(sender_id, res)
         return res
 
     def handle_msg_data(self, data):
