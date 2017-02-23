@@ -4,7 +4,7 @@ import json
 from flask import current_app as ca
 
 
-def analyze_and_action(sender_id, mevent):
+def analyze_and_action(sender_id, msg_text):
     """Analyze message and do action for the result.
 
     Note:
@@ -18,9 +18,6 @@ def analyze_and_action(sender_id, mevent):
     Returns:
         dict: Handled or action result (contains return message)
     """
-    # the message's text
-    msg_text = mevent["message"]["text"]
-
     st = time.time()
     ca.logger.debug('analyzing start: {}'.format(msg_text))
     res = ca.chatbot.request_analyze(sender_id, msg_text)
@@ -32,37 +29,30 @@ def analyze_and_action(sender_id, mevent):
         res = res.read()
     data = json.loads(res)
 
-    hresult = None
-
     # check entity filling
     incomplete, res = ca.chatbot.handle_incomplete(data)
     if incomplete:
         ca.logger.info("incomplete message: {}".format(res))
-        hresult = res
+        return res
 
     # check unknown message
-    if hresult is None:
-        unknown, res = ca.chatbot.handle_unknown(data)
-        if unknown:
-            ca.logger.info("unknown message: {}".format(res))
-            hresult = res
+    unknown, res = ca.chatbot.handle_unknown(data)
+    if unknown:
+        ca.logger.info("unknown message: {}".format(res))
+        return res
 
     # check action needs to be done
-    if hresult is None:
-        st = time.time()
-        if len(data['result']['action']) > 0:
-            action = data['result']['action']
-            ca.logger.debug("action '{}' start: {}".format(action, data))
-            res = ca.do_action(data)
-            ca.logger.debug("action result: {}".format(res))
-            ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
-            hresult = res
+    st = time.time()
+    if len(data['result']['action']) > 0:
+        action = data['result']['action']
+        ca.logger.debug("action '{}' start: {}".format(action, data))
+        res = ca.do_action(data)
+        ca.logger.debug("action result: {}".format(res))
+        ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
+        return res
 
     # normal reply
-    if hresult is None:
-        hresult = data['result']['fulfillment']
-
-    return hresult
+    return data['result']['fulfillment']
 
 
 class CommonBase(object):
@@ -96,8 +86,25 @@ class MessengerBase(CommonBase):
         flask_app.msgn = self
         flask_app.register_blueprint(blueprint)
 
+        self.app = flask_app
         self.page_access_token = page_access_token
         self.verify_token = verify_token
+
+    def get_text_msg(self, msg_event):
+        raise NotImplementedError()
+
+    def send_message(self, recipient_id, res):
+        raise NotImplementedError()
+
+    def ask_enter_text_msg(self, recipient_id):
+        ca.msgn.send_message(recipient_id, dict(speech="Please enter text "
+                                                "message."))
+
+    def handle_msg_data(self, data):
+        raise NotImplementedError()
+
+    def reply_text_message(self, app, sender_id, mevent):
+        raise NotImplementedError()
 
 
 def init_action(flask_app, do_action):

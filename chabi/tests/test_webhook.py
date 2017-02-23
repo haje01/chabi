@@ -236,6 +236,7 @@ def test_apiai_webhook(sess):
 
     app = init_apiai(Flask(__name__), access_token)
     app = init_action(app, do_action)
+    app.config['TESTING'] = True
 
     with app.test_client() as c:
         r = c.get('/apiai')
@@ -253,6 +254,7 @@ def test_facebook():
     """Facebook webhook test."""
     app = init_facebook(Flask(__name__), 'access_token', 'verify_token')
     app = init_dummy_chatbot(app, 'cb_access_token')
+    app.config['TESTING'] = True
 
     # default GET
     with app.test_client() as c:
