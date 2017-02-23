@@ -29,6 +29,16 @@ def analyze_and_action(sender_id, msg_text):
         res = res.read()
     data = json.loads(res)
 
+    # check action needs to be done
+    st = time.time()
+    if len(data['result']['action']) > 0:
+        action = data['result']['action']
+        ca.logger.debug("action '{}' start: {}".format(action, data))
+        res = ca.do_action(data)
+        ca.logger.debug("action result: {}".format(res))
+        ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
+        return res
+
     # check entity filling
     incomplete, res = ca.chatbot.handle_incomplete(data)
     if incomplete:
@@ -39,16 +49,6 @@ def analyze_and_action(sender_id, msg_text):
     unknown, res = ca.chatbot.handle_unknown(data)
     if unknown:
         ca.logger.info("unknown message: {}".format(res))
-        return res
-
-    # check action needs to be done
-    st = time.time()
-    if len(data['result']['action']) > 0:
-        action = data['result']['action']
-        ca.logger.debug("action '{}' start: {}".format(action, data))
-        res = ca.do_action(data)
-        ca.logger.debug("action result: {}".format(res))
-        ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
         return res
 
     # normal reply

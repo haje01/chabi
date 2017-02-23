@@ -123,10 +123,6 @@ class Facebook(MessengerBase):
                     self.ask_enter_text_msg(sender_id)
                     continue
 
-                # the recipient's ID, which should be your page's
-                # facebook ID
-                recipient_id = messaging_event["recipient"]["id"]  # NOQA
-
                 # send reply action first
                 self.send_reply_action(sender_id)
 
