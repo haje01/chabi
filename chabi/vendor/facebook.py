@@ -120,7 +120,7 @@ class Facebook(MessengerBase):
                 sender_id = messaging_event["sender"]["id"]
                 msg_text = self.get_text_msg(messaging_event)
                 if msg_text is None:
-                    self.ask_enter_text_msg()
+                    self.ask_enter_text_msg(sender_id)
                     continue
 
                 # the recipient's ID, which should be your page's
