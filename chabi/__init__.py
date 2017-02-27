@@ -10,13 +10,14 @@ def analyze_and_action(sender_id, msg_text):
     Note:
         `request_analyze` of ChatBot Wrapper, analyzes messages via ChatBot
             API.
+        `handle_action` of ChatBot Wrapper, check for a action need to be done.
         `handle_incomplete` of ChatBot Wrapper, handles entity filling message.
         `handle_unknown` of ChatBot Wrapper, handles unknown messages from
             user.
         `do_action` of App, do action for analyzed result from ChatBot API.
 
     Returns:
-        dict: Handled or action result (contains return message)
+        dict: Handled result (contains return message)
     """
     st = time.time()
     ca.logger.debug('analyzing start: {}'.format(msg_text))
@@ -30,15 +31,9 @@ def analyze_and_action(sender_id, msg_text):
     data = json.loads(res)
 
     # check action needs to be done
-    st = time.time()
-    result = data['result']
-    action = result['action']
-    if len(action) > 0 and 'actionIncomplete' in result and\
-            not result['actionIncomplete']:
-        ca.logger.debug("action '{}' start: {}".format(action, data))
-        res = ca.do_action(data)
-        ca.logger.debug("action result: {}".format(res))
-        ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
+    action_done, res = ca.chatbot.handle_action(data)
+    if action_done:
+        ca.logger.info("action '{}' done".format(action_done))
         return res
 
     # check entity filling
@@ -53,12 +48,8 @@ def analyze_and_action(sender_id, msg_text):
         ca.logger.info("unknown message: {}".format(res))
         return res
 
-    # normal reply
-    if 'fulfillment' in result and len(result['fulfillment']) > 0:
-        msg = result['fulfillment']
-    else:
-        msg = None
-    return msg
+    # default reply
+    return ca.chatbot.handle_default(data)
 
 
 class CommonBase(object):
@@ -78,12 +69,17 @@ class ChatbotBase(CommonBase):
     def request_analyze(self, sender_id, msg):
         raise NotImplementedError()
 
+    def handle_action(self, data):
+        raise NotImplementedError()
+
     def handle_unknown(self):
         raise NotImplementedError()
 
     def handle_incomplete(self):
         raise NotImplementedError()
 
+    def handle_default(self, data):
+        raise NotImplementedError()
 
 class MessengerBase(CommonBase):
 
@@ -103,8 +99,14 @@ class MessengerBase(CommonBase):
         raise NotImplementedError()
 
     def ask_enter_text_msg(self, recipient_id):
-        ca.msgn.send_message(recipient_id, dict(speech="Please enter text "
-                                                "message."))
+        """Prompt user to enter only text message.
+
+        Return:
+            str: Return message content.
+        """
+        msg = dict(speech="Please enter text message.")
+        self.send_message(recipient_id, msg)
+        return msg
 
     def handle_msg_data(self, data):
         raise NotImplementedError()

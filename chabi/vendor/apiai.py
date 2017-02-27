@@ -1,5 +1,5 @@
 """Chatbot API implementation of API.AI"""
-
+import time
 import json
 
 from flask import Blueprint, current_app as ca, request, make_response
@@ -59,6 +59,19 @@ class ApiAI(ChatbotBase):
         response = request.getresponse()
         return response
 
+    def handle_action(self, data):
+        st = time.time()
+        result = data['result']
+        action = result['action']
+        if len(action) > 0 and 'actionIncomplete' in result and\
+                not result['actionIncomplete']:
+            ca.logger.debug("action '{}' start: {}".format(action, data))
+            res = ca.do_action(data)
+            ca.logger.debug("action result: {}".format(res))
+            ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
+            return True, res
+        return False, None
+
     def handle_incomplete(self, data):
         result = data['result']
         if 'actionIncomplete' in result:
@@ -76,6 +89,10 @@ class ApiAI(ChatbotBase):
             return True, res
         return False, None
 
+    def handle_default(self, data):
+        result = data['result']
+        if 'fulfillment' in result and len(result['fulfillment']) > 0:
+            return result['fulfillment']
 
 def init_apiai(flask_app, access_token):
     ApiAI(flask_app, access_token)

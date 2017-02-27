@@ -47,34 +47,6 @@ def webhook():
     return json.dumps(results), 200
 
 
-def send_data(recipient_id, data):
-    if ca.msgn.page_access_token is None:
-        # Usually test case
-        ca.logger.warning("PAGE_ACCESS_TOKEN is None, Skip sending.")
-        return
-
-    ca.logger.debug("sending message to {recipient}: {data}".format(
-        recipient=recipient_id, data=data))
-
-    params = {
-        "access_token": ca.msgn.page_access_token
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-
-    data['recipient'] = {
-        "id": recipient_id
-    }
-    ca.logger.debug("FB send_data: {}".format(data))
-    r = requests.post("https://graph.facebook.com/v2.6/me/messages",
-                      params=params, headers=headers, data=json.dumps(data))
-    if r.status_code != 200:
-        ca.logger.error(r.status_code)
-        ca.logger.error(r.text)
-    return r
-
-
 class Facebook(MessengerBase):
 
     def __init__(self, flask_app, page_access_token, verify_token):
@@ -87,29 +59,65 @@ class Facebook(MessengerBase):
         except KeyError:
             return
 
+    def _send_data(self, recipient_id, data):
+        if self.page_access_token is None:
+            # Usually test case
+            self.logger.warning("PAGE_ACCESS_TOKEN is None, Skip sending.")
+            return
+
+        self.logger.debug("sending message to {recipient}: {data}".format(
+            recipient=recipient_id, data=data))
+
+        params = {
+            "access_token": self.page_access_token
+        }
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        data['recipient'] = {
+            "id": recipient_id
+        }
+        self.logger.debug("FB _send_data: {}".format(data))
+        r = requests.post("https://graph.facebook.com/v2.6/me/messages",
+                        params=params, headers=headers, data=json.dumps(data))
+        if r.status_code != 200:
+            self.logger.error(r.status_code)
+            self.logger.error(r.text)
+        return data
+
     def send_message(self, recipient_id, res):
+        """Send message to recipient.
+
+        Return:
+            dict: Sent Message content.
+        """
         data = {
             'message': {'text': res['speech']}
         }
-        return send_data(recipient_id, data)
+        return self._send_data(recipient_id, data)
 
     def send_reply_action(self, recipient_id):
         data = {
             'sender_action': 'typing_on'
         }
-        return send_data(recipient_id, data)
+        return self._send_data(recipient_id, data)
 
     def reply_text_message(self, app, sender_id, msg_text):
-        """Reply user message."""
-        res = analyze_and_action(sender_id, msg_text)
+        """Reply user message.
 
-        if res is not None and len(res['speech']) > 0:
-            self.send_message(sender_id, res)
+        Return:
+            dict: Sent message content.
+        """
+        msg = analyze_and_action(sender_id, msg_text)
+
+        if msg is not None and len(msg['speech']) > 0:
+            self.send_message(sender_id, msg)
         else:
             app.logger.warning("Fail to analyzed message: {}".format(msg_text))
-            res = dict(speech='Oops.')
-            self.send_message(sender_id, res)
-        return res
+            msg = dict(speech='Oops.')
+            self.send_message(sender_id, msg)
+        return msg
 
     def handle_msg_data(self, data):
         results = []
@@ -122,7 +130,8 @@ class Facebook(MessengerBase):
                 sender_id = messaging_event["sender"]["id"]
                 msg_text = self.get_text_msg(messaging_event)
                 if msg_text is None:
-                    self.ask_enter_text_msg(sender_id)
+                    res = self.ask_enter_text_msg(sender_id)
+                    results.append(res)
                     continue
 
                 # send reply action first
