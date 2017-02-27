@@ -104,7 +104,7 @@ class MessengerBase(CommonBase):
         Return:
             str: Return message content.
         """
-        msg = dict(speech="Please enter text message.")
+        msg = dict(message=dict(text="Please enter text message."))
         self.send_message(recipient_id, msg)
         return msg
 

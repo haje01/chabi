@@ -86,15 +86,12 @@ class Facebook(MessengerBase):
             self.logger.error(r.text)
         return data
 
-    def send_message(self, recipient_id, res):
+    def send_message(self, recipient_id, data):
         """Send message to recipient.
 
         Return:
             dict: Sent Message content.
         """
-        data = {
-            'message': {'text': res['speech']}
-        }
         return self._send_data(recipient_id, data)
 
     def send_reply_action(self, recipient_id):
@@ -111,11 +108,16 @@ class Facebook(MessengerBase):
         """
         msg = analyze_and_action(sender_id, msg_text)
 
-        if msg is not None and len(msg['speech']) > 0:
+        has_text = msg and (type(msg) is str)
+        has_attach = msg and 'message' in msg and 'attachment' in\
+            msg['message']
+        if has_text or has_attach:
+            if has_text:
+                msg = dict(message=dict(text=msg))
             self.send_message(sender_id, msg)
         else:
             app.logger.warning("Fail to analyzed message: {}".format(msg_text))
-            msg = dict(speech='Oops.')
+            msg = dict(message=dict(text='Oops.'))
             self.send_message(sender_id, msg)
         return msg
 

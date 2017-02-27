@@ -73,19 +73,31 @@ class ApiAI(ChatbotBase):
         return False, None
 
     def handle_incomplete(self, data):
+        """Handle incomplete action(usually fi entity filling).
+
+        Returns:
+            boolean: Whether action incomplete or not.
+            str: Entity filling question when action incomplete.
+        """
         result = data['result']
         if 'actionIncomplete' in result:
             ff = result['fulfillment']
-            res = {'speech': ff['speech']}
+            res = ff['speech']
             return True, res
         return False, None
 
     def handle_unknown(self, data):
+        """Handle unknown action.
+
+        Returns:
+            boolean: Whether unknown action or not.
+            str: Question when unknown action occurred.
+        """
         result = data['result']
         if 'action' in result and result['action'] == 'input.unknown':
             self.logger.debug("Unknown {}".format(data))
             ff = result['fulfillment']
-            res = {'speech': ff['speech']}
+            res = ff['speech']
             return True, res
         return False, None
 
