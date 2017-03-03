@@ -148,84 +148,106 @@ class Facebook(MessengerBase):
         return self._send_data(recipient_id, data)
 
     def reply_text_message(self, sender_id, msg_text):
-        """Reply user message.
+        """Reply to user message.
+
+        Dispatch proper reply message by analyzing user message via Chatbot
+        API, then send it.
 
         Return:
-            dict: Sent message content.
+            dict or str: Sent message content.
         """
-        msg = analyze_and_action(sender_id, msg_text)
-
-        reply_is_str = type(msg) is str
-        reply_is_dict = type(msg) is dict
-        if reply_is_str or reply_is_dict:
-            if reply_is_str:
-                msg = dict(message=dict(text=msg))
-            self.send_message(sender_id, msg)
-        else:
+        reply = analyze_and_action(sender_id, msg_text)
+        if not reply:
             self.logger.warning("Fail to analyze message: {}".format(msg_text))
-            msg = dict(message=dict(text='Oops.'))
-            self.send_message(sender_id, msg)
-        return msg
+            reply = "Oops."
+
+        reply_is_str = type(reply) is str
+        if reply_is_str:
+            reply = dict(message=dict(text=reply))
+        self.send_message(sender_id, reply)
+        return reply
+
+    def _handle_msg_event(self, mevent, results):
+        """Handle each messaging event within payload.
+
+        Args:
+            event: Messaging event to handle.
+            results: List for storing this result.
+
+        Returns:
+            boolean: True to call `continue` from loop
+        """
+        # the facebook ID of the person sending you the message
+        sender_id = mevent["sender"]["id"]
+        recipient_id = mevent["recipient"]
+        # send reply action first
+        self.send_reply_action(sender_id)
+
+        # handle postback
+        if mevent.get("postback"):
+            res = self.app.evth.handle_postback(mevent['postback'])
+            self.send_message(sender_id, res)
+            results.append(res)
+            return True
+
+        # account linking(login)
+        if mevent.get("account_linking"):
+            linked = mevent['account_linking']['status']
+            if linked == 'unlinked':
+                self.logger.warning("recipient {} has unlinked "
+                                    .format(recipient_id))
+                res = self.app.msgn.handle_account_unlink()
+            else:
+                self.logger.warning("recipient {} has linked "
+                                    .format(recipient_id))
+                auth_code = mevent['account_linking']\
+                                        ['authorization_code']
+                res = self.app.msgn.handle_account_link(auth_code)
+
+            self.send_message(sender_id, res)
+            results.append(res)
+            return True
+
+        msg_text = self.get_text_msg(mevent)
+        if msg_text is None:
+            res = self.ask_enter_text_msg(sender_id)
+            results.append(res)
+            return True
+
+        # someone sent us a message
+        if mevent.get("message"):
+            res = self.reply_text_message(sender_id, msg_text)
+            results.append(res)
+            return True
+
+        # delivery confirmation
+        if mevent.get("delivery"):
+            pass
+        # optin confirmation
+        if mevent.get("optin"):
+            pass
+        # user clicked/tapped "postback" button in earlier message
+        if mevent.get("postback"):
+            pass
 
     def handle_msg_data(self, data):
+        """Entry for handling message payload from Facebook.
+
+        Args:
+            data: JSON data from messenger.
+
+        Returns:
+            list: Results from handling each messaging event in Facebook
+                payload.
+        """
         results = []
         app = self.app
         for entry in data["entry"]:
             for messaging_event in entry["messaging"]:
                 app.logger.debug("Webhook: {}".format(messaging_event))
-
-                # the facebook ID of the person sending you the message
-                sender_id = messaging_event["sender"]["id"]
-                recipient_id = messaging_event["recipient"]
-                # send reply action first
-                self.send_reply_action(sender_id)
-
-                # handle postback
-                if messaging_event.get("postback"):
-                    res = app.evth.handle_postback(messaging_event['postback'])
-                    self.send_message(sender_id, res)
-                    results.append(res)
+                cont = self._handle_msg_event(messaging_event, results)
+                if cont:
                     continue
-
-                # account linking(login)
-                if messaging_event.get("account_linking"):
-                    linked = messaging_event['account_linking']['status']
-                    if linked == 'unlinked':
-                        self.logger.warning("recipient {} has unlinked "
-                                            .format(recipient_id))
-                        res = app.msgn.handle_account_unlink()
-                    else:
-                        self.logger.warning("recipient {} has linked "
-                                            .format(recipient_id))
-                        auth_code = messaging_event['account_linking']\
-                                                ['authorization_code']
-                        res = app.msgn.handle_account_link(auth_code)
-
-                    self.send_message(sender_id, res)
-                    results.append(res)
-                    continue
-
-                msg_text = self.get_text_msg(messaging_event)
-                if msg_text is None:
-                    res = self.ask_enter_text_msg(sender_id)
-                    results.append(res)
-                    continue
-
-                # someone sent us a message
-                if messaging_event.get("message"):
-                    res = self.reply_text_message(sender_id, msg_text)
-                    results.append(res)
-                    continue
-
-                # delivery confirmation
-                if messaging_event.get("delivery"):
-                    pass
-                # optin confirmation
-                if messaging_event.get("optin"):
-                    pass
-                # user clicked/tapped "postback" button in earlier message
-                if messaging_event.get("postback"):
-                    pass
         return results
 
     def handle_account_link(self, code):

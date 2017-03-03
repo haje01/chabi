@@ -78,7 +78,7 @@ class ApiAI(ChatbotBase):
         st = time.time()
         result = data['result']
         action = result['action']
-        if len(action) > 0 and 'actionIncomplete' in result and\
+        if action and 'actionIncomplete' in result and\
                 not result['actionIncomplete']:
             ca.logger.debug("action '{}' start: {}".format(action, data))
             res = ca.evth.handle_action(data)
@@ -116,5 +116,5 @@ class ApiAI(ChatbotBase):
 
     def extract_text_msg(self, data):
         result = data['result']
-        if 'fulfillment' in result and len(result['fulfillment']) > 0:
+        if 'fulfillment' in result and result['fulfillment']:
             return result['fulfillment']['speech']

@@ -5,7 +5,7 @@ from flask import Flask, Blueprint
 import pytest
 
 from chabi import ChatbotBase, EventHandlerBase
-from chabi.vendor.facebook import Facebook
+from chabi.vendor.facebook import Facebook, blueprint as fbbp
 
 
 blueprint = Blueprint('dummy', __name__)
@@ -143,9 +143,9 @@ def test_facebook_unsupport(app):
 
 
 def test_facebook_static():
-    with blueprint.open_resource('static/style.css') as f:
+    with fbbp.open_resource('static/style.css') as f:
         code = f.read()
-        assert len(code) > 0
+        assert code
 
 
 def test_facebook_start(app):

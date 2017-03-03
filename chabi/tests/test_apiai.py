@@ -8,8 +8,8 @@ from flask import Flask
 import pytest
 import apiai
 
-from chabi import init_event_handler, EventHandlerBase
-from chabi.vendor.apiai import init_apiai
+from chabi import EventHandlerBase
+from chabi.vendor.apiai import ApiAI
 
 
 @pytest.fixture
@@ -233,8 +233,9 @@ def test_apiai_webhook(sess):
         def handle_action(self, data):
             return dict(result=data['foo'])
 
-    app = init_apiai(Flask(__name__), access_token)
-    app = init_event_handler(app, EventHandler)
+    app = Flask(__name__)
+    ApiAI(app, access_token)
+    EventHandler(app)
     app.config['TESTING'] = True
 
     with app.test_client() as c:
