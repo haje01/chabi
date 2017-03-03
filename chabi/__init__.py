@@ -8,13 +8,14 @@ def analyze_and_action(sender_id, msg_text):
     """Analyze message and do action for the result.
 
     Note:
-        `request_analyze` of ChatBot Wrapper, analyzes messages via ChatBot
+        `request_analyze` of Chatbot Wrapper, analyzes messages via ChatBot
             API.
-        `handle_action` of ChatBot Wrapper, check for a action need to be done.
+        `handle_action` of Chatbot Wrapper, check for a action need to be done.
         `handle_incomplete` of ChatBot Wrapper, handles entity filling message.
-        `handle_unknown` of ChatBot Wrapper, handles unknown messages from
+        `handle_unknown` of Chatbot Wrapper, handles unknown messages from
             user.
-        `do_action` of App, do action for analyzed result from ChatBot API.
+        `extract_text_msg` of Chatbot, extract text message part from Chatbot
+            API return.
 
     Returns:
         dict: Handled result (contains return message)
@@ -30,6 +31,12 @@ def analyze_and_action(sender_id, msg_text):
         res = res.read()
     data = json.loads(res)
 
+    # check unknown message
+    unknown, res = ca.chatbot.handle_unknown(data)
+    if unknown:
+        ca.logger.info("unknown message: {}".format(res))
+        return res
+
     # check action needs to be done
     action_done, res = ca.chatbot.handle_action(data)
     if action_done:
@@ -42,27 +49,35 @@ def analyze_and_action(sender_id, msg_text):
         ca.logger.info("incomplete message: {}".format(res))
         return res
 
-    # check unknown message
-    unknown, res = ca.chatbot.handle_unknown(data)
-    if unknown:
-        ca.logger.info("unknown message: {}".format(res))
-        return res
-
     # default reply
-    return ca.chatbot.handle_default(data)
+    return ca.chatbot.extract_text_msg(data)
 
 
 class CommonBase(object):
 
-    def __init__(self, flask_app):
-        self.logger = flask_app.logger
+    def __init__(self, app):
+        """Init common base.
+
+        Args:
+            app: A Flask app instance.
+        """
+        self.app = app
+        self.logger = app.logger
 
 
 class ChatbotBase(CommonBase):
-    def __init__(self, flask_app, blueprint, access_token):
-        super(ChatbotBase, self).__init__(flask_app)
-        flask_app.chatbot = self
-        flask_app.register_blueprint(blueprint)
+
+    def __init__(self, app, blueprint, access_token):
+        """Init chatbot base.
+
+        Args:
+            app: A Flask app instance.
+            blueprint: Flask blueprint for url routing.
+            access_token: Chatbot API access token.
+        """
+        super(ChatbotBase, self).__init__(app)
+        app.chatbot = self
+        app.register_blueprint(blueprint)
 
         self.access_token = access_token
 
@@ -78,17 +93,23 @@ class ChatbotBase(CommonBase):
     def handle_incomplete(self):
         raise NotImplementedError()
 
-    def handle_default(self, data):
+    def extract_text_msg(self, data):
         raise NotImplementedError()
+
 
 class MessengerBase(CommonBase):
 
-    def __init__(self, flask_app, blueprint, page_access_token, verify_token):
-        super(MessengerBase, self).__init__(flask_app)
-        flask_app.msgn = self
-        flask_app.register_blueprint(blueprint)
+    def __init__(self, app, blueprint, page_access_token, verify_token):
+        """Init messenger base.
 
-        self.app = flask_app
+        Args:
+            app: A Flask app instance.
+        """
+        super(MessengerBase, self).__init__(app)
+        app.msgn = self
+        app.register_blueprint(blueprint)
+
+        self.app = app
         self.page_access_token = page_access_token
         self.verify_token = verify_token
 
@@ -114,7 +135,26 @@ class MessengerBase(CommonBase):
     def reply_text_message(self, app, sender_id, mevent):
         raise NotImplementedError()
 
+    def handle_account_link(self, auth_code):
+        raise NotImplementedError()
 
-def init_action(flask_app, do_action):
-    flask_app.do_action = do_action
-    return flask_app
+    def handle_account_unlink(self):
+        raise NotImplementedError()
+
+
+class EventHandlerBase(CommonBase):
+
+    def __init__(self, app):
+        """Init event handler base.
+
+        Args:
+            app: A Flask app instance.
+        """
+        super(EventHandlerBase, self).__init__(app)
+        app.evth = self
+
+    def handle_action(self, msg):
+        raise NotImplementedError()
+
+    def handle_postback(self, msg):
+        raise NotImplementedError()

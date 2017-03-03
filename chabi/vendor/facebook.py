@@ -2,12 +2,15 @@
 import json
 
 import requests
-from flask import Blueprint, current_app as ca, request
+from flask import Blueprint, current_app as ca, request, render_template,\
+    redirect, make_response
 
 from chabi import analyze_and_action
 from chabi import MessengerBase
 
-blueprint = Blueprint('facebook', __name__)
+blueprint = Blueprint('facebook', __name__, template_folder='templates',
+                      static_folder='static',
+                      static_url_path='/static/facebook')
 
 
 @blueprint.route('/', methods=['GET'])
@@ -30,6 +33,37 @@ def verify():
     return "OK", 200
 
 
+@blueprint.route('/facebook/login', methods=['GET', 'POST'])
+def login():
+    service = ca.config['SERVICE']
+    error = None
+    auth_code = ca.config['ACCOUNT_LINK_AUTH_CODE']
+
+    if request.method == 'POST':
+        user = request.form['username']
+
+        if user != 'haje01':
+            error = "Invalid Username"
+        elif request.form['password'] != 'asdf':
+            error = "Invalid Password"
+
+        if error:
+            return render_template('login.html', service=service, error=error)
+        else:
+            # send auth ok to facebook
+            ca.logger.warning("User {} logged in".format(user))
+            redirect_uri = request.cookies.get('redirect_uri')
+            ruri = '{}&authorization_code={}'.format(redirect_uri, auth_code)
+            return redirect(ruri)
+    else:
+        # GET
+        redirect_uri = request.args.get('redirect_uri')
+        html = render_template('login.html', service=service, error=error)
+        res = make_response(html)
+        res.set_cookie('redirect_uri', redirect_uri)
+        return res
+
+
 @blueprint.route('/facebook', methods=['POST'])
 def webhook():
     """Webhook for Facebook message."""
@@ -44,13 +78,25 @@ def webhook():
             if data["object"] == "page":
                 results = ca.msgn.handle_msg_data(data)
 
-    return json.dumps(results), 200
+    if ca.config['TESTING']:
+        res = json.dumps(results)
+    else:
+        res = 'OK'
+
+    return res, 200
 
 
 class Facebook(MessengerBase):
 
-    def __init__(self, flask_app, page_access_token, verify_token):
-        super(Facebook, self).__init__(flask_app, blueprint, page_access_token,
+    def __init__(self, app, page_access_token, verify_token):
+        """Init Facebook instance.
+
+        Args:
+            app: A Flask app instance.
+            page_access_token: Facebook page access token.
+            verify_token: Facebook page verify token.
+        """
+        super(Facebook, self).__init__(app, blueprint, page_access_token,
                                        verify_token)
 
     def get_text_msg(self, mevent):
@@ -80,7 +126,8 @@ class Facebook(MessengerBase):
         }
         self.logger.debug("FB _send_data: {}".format(data))
         r = requests.post("https://graph.facebook.com/v2.6/me/messages",
-                        params=params, headers=headers, data=json.dumps(data))
+                          params=params, headers=headers,
+                          data=json.dumps(data))
         if r.status_code != 200:
             self.logger.error(r.status_code)
             self.logger.error(r.text)
@@ -100,7 +147,7 @@ class Facebook(MessengerBase):
         }
         return self._send_data(recipient_id, data)
 
-    def reply_text_message(self, app, sender_id, msg_text):
+    def reply_text_message(self, sender_id, msg_text):
         """Reply user message.
 
         Return:
@@ -108,15 +155,14 @@ class Facebook(MessengerBase):
         """
         msg = analyze_and_action(sender_id, msg_text)
 
-        has_text = msg and (type(msg) is str)
-        has_attach = msg and 'message' in msg and 'attachment' in\
-            msg['message']
-        if has_text or has_attach:
-            if has_text:
+        reply_is_str = type(msg) is str
+        reply_is_dict = type(msg) is dict
+        if reply_is_str or reply_is_dict:
+            if reply_is_str:
                 msg = dict(message=dict(text=msg))
             self.send_message(sender_id, msg)
         else:
-            app.logger.warning("Fail to analyzed message: {}".format(msg_text))
+            self.logger.warning("Fail to analyze message: {}".format(msg_text))
             msg = dict(message=dict(text='Oops.'))
             self.send_message(sender_id, msg)
         return msg
@@ -130,19 +176,46 @@ class Facebook(MessengerBase):
 
                 # the facebook ID of the person sending you the message
                 sender_id = messaging_event["sender"]["id"]
+                recipient_id = messaging_event["recipient"]
+                # send reply action first
+                self.send_reply_action(sender_id)
+
+                # handle postback
+                if messaging_event.get("postback"):
+                    res = app.evth.handle_postback(messaging_event['postback'])
+                    self.send_message(sender_id, res)
+                    results.append(res)
+                    continue
+
+                # account linking(login)
+                if messaging_event.get("account_linking"):
+                    linked = messaging_event['account_linking']['status']
+                    if linked == 'unlinked':
+                        self.logger.warning("recipient {} has unlinked "
+                                            .format(recipient_id))
+                        res = app.msgn.handle_account_unlink()
+                    else:
+                        self.logger.warning("recipient {} has linked "
+                                            .format(recipient_id))
+                        auth_code = messaging_event['account_linking']\
+                                                ['authorization_code']
+                        res = app.msgn.handle_account_link(auth_code)
+
+                    self.send_message(sender_id, res)
+                    results.append(res)
+                    continue
+
                 msg_text = self.get_text_msg(messaging_event)
                 if msg_text is None:
                     res = self.ask_enter_text_msg(sender_id)
                     results.append(res)
                     continue
 
-                # send reply action first
-                self.send_reply_action(sender_id)
-
                 # someone sent us a message
                 if messaging_event.get("message"):
-                    res = self.reply_text_message(app, sender_id, msg_text)
+                    res = self.reply_text_message(sender_id, msg_text)
                     results.append(res)
+                    continue
 
                 # delivery confirmation
                 if messaging_event.get("delivery"):
@@ -155,7 +228,8 @@ class Facebook(MessengerBase):
                     pass
         return results
 
+    def handle_account_link(self, code):
+        return dict(message=dict(text='You have successfully logged in.'))
 
-def init_facebook(flask_app, access_token, verify_token):
-    Facebook(flask_app, access_token, verify_token)
-    return flask_app
+    def handle_account_unlink(self):
+        return dict(message=dict(text='You have successfully logged out.'))

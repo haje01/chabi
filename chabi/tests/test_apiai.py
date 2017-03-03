@@ -8,10 +8,8 @@ from flask import Flask
 import pytest
 import apiai
 
-from chabi import init_action
+from chabi import init_event_handler, EventHandlerBase
 from chabi.vendor.apiai import init_apiai
-from chabi.vendor.facebook import init_facebook
-from chabi.vendor.dummy import init_dummy_chatbot
 
 
 @pytest.fixture
@@ -231,11 +229,12 @@ def test_apiai_webhook(sess):
     access_token = os.environ.get('APIAI_API_ACCESS_TOKEN')
     assert access_token is not None
 
-    def do_action(data):
-        return dict(result=data['foo'])
+    class EventHandler(EventHandlerBase):
+        def handle_action(self, data):
+            return dict(result=data['foo'])
 
     app = init_apiai(Flask(__name__), access_token)
-    app = init_action(app, do_action)
+    app = init_event_handler(app, EventHandler)
     app.config['TESTING'] = True
 
     with app.test_client() as c:

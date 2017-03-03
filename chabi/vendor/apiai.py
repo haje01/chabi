@@ -31,11 +31,11 @@ def webhook():
         if 'action' in data['result']:
             if data['result']['action'] == 'input.unknown':
                 res = data['result']['fullfillment']
-                res = ca.do_action(data)
+                res = ca.evth.handle_action(data)
                 action_done = True
 
     if not action_done:
-        res = ca.do_action(data)
+        res = ca.evth.handle_action(data)
 
     ca.logger.debug("Response:")
     res = json.dumps(res, indent=4)
@@ -46,8 +46,14 @@ def webhook():
 
 
 class ApiAI(ChatbotBase):
-    def __init__(self, flask_app, access_token):
-        super(ApiAI, self).__init__(flask_app, blueprint, access_token)
+    def __init__(self, app, access_token):
+        """Init ApiAI Instance.
+
+        Args:
+            app: Flask app instance.
+            access_token: API.AI client access token.
+        """
+        super(ApiAI, self).__init__(app, blueprint, access_token)
 
     def request_analyze(self, sender_id, msg):
         token = self.access_token
@@ -60,16 +66,27 @@ class ApiAI(ChatbotBase):
         return response
 
     def handle_action(self, data):
+        """Handle action to be done.
+
+        Args:
+            data: Result json data from API.AI
+
+        Returns:
+            boolean: True if action executed False otherwise.
+            str: Result message after action.
+        """
         st = time.time()
         result = data['result']
         action = result['action']
         if len(action) > 0 and 'actionIncomplete' in result and\
                 not result['actionIncomplete']:
             ca.logger.debug("action '{}' start: {}".format(action, data))
-            res = ca.do_action(data)
-            ca.logger.debug("action result: {}".format(res))
-            ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() - st))
-            return True, res
+            res = ca.evth.handle_action(data)
+            if res:
+                ca.logger.debug("action result: {}".format(res))
+                ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() -
+                                                                 st))
+                return True, res
         return False, None
 
     def handle_incomplete(self, data):
@@ -80,10 +97,8 @@ class ApiAI(ChatbotBase):
             str: Entity filling question when action incomplete.
         """
         result = data['result']
-        if 'actionIncomplete' in result:
-            ff = result['fulfillment']
-            res = ff['speech']
-            return True, res
+        if 'actionIncomplete' in result and result['actionIncomplete']:
+            return True, self.extract_text_msg(data)
         return False, None
 
     def handle_unknown(self, data):
@@ -96,16 +111,10 @@ class ApiAI(ChatbotBase):
         result = data['result']
         if 'action' in result and result['action'] == 'input.unknown':
             self.logger.debug("Unknown {}".format(data))
-            ff = result['fulfillment']
-            res = ff['speech']
-            return True, res
+            return True, self.extract_text_msg(data)
         return False, None
 
-    def handle_default(self, data):
+    def extract_text_msg(self, data):
         result = data['result']
         if 'fulfillment' in result and len(result['fulfillment']) > 0:
-            return result['fulfillment']
-
-def init_apiai(flask_app, access_token):
-    ApiAI(flask_app, access_token)
-    return flask_app
+            return result['fulfillment']['speech']
