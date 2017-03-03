@@ -1,0 +1,11 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ service }}</title>
+<link rel="stylesheet" type="text/css" href="{{ url_for('facebook.static', filename='style.css') }}">
+<div class="page">
+  <h1>MU Origin</h1>
+  {% for message in get_flashed_messages() %}
+    <div class="flash">{{ message }}</div>
+  {% endfor %}
+  {% block body %}{% endblock %}
+</div>
