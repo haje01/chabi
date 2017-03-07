@@ -2,10 +2,12 @@
 import json
 
 from flask import Flask, Blueprint
+from pony import orm
 import pytest
 
 from chabi import ChatbotBase, EventHandlerBase
-from chabi.vendor.facebook import Facebook, blueprint as fbbp
+from chabi.vendor.facebook import Facebook, EventHandlerBase, blueprint as fbbp
+from chabi.models import db
 
 
 blueprint = Blueprint('dummy', __name__)
@@ -25,7 +27,7 @@ class DummyChatbot(ChatbotBase):
         return False, None
 
 
-class DummyEventHandler(EventHandlerBase):
+class EventHandler(EventHandlerBase):
 
     def handle_postback(self, msg):
         payload = msg['payload']
@@ -41,7 +43,7 @@ def app():
     ap = Flask(__name__)
     Facebook(ap, 'access_token', 'verify_token')
     DummyChatbot(ap, 'cb_access_token')
-    DummyEventHandler(ap)
+    EventHandler(ap)
     ap.config['TESTING'] = True
     return ap
 
@@ -180,66 +182,89 @@ def test_facebook_start(app):
         assert 'start button' in data
 
 
-def test_facebook_login(app):
-    with app.test_client() as c:
-        data = {
-            "object": "page",
-            "entry": [
-                {
-                    "id": "entryid",
-                    "time": 1488432412391,
-                    "messaging": [
-                        {
-                            "recipient": {
-                                "id": "recipientid"
-                            },
-                            "timestamp": 1488432412391,
-                            "sender": {
-                                "id": "senderid"
-                            },
-                            "account_linking": {
-                                "authorization_code": "34567",
-                                "status": "linked"
-                            }
+def do_login(c):
+    # account link request payload
+    data = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "entryid",
+                "time": 1488432412391,
+                "messaging": [
+                    {
+                        "recipient": {
+                            "id": "recipientid"
+                        },
+                        "timestamp": 1488432412391,
+                        "sender": {
+                            "id": "senderid"
+                        },
+                        "account_linking": {
+                            "authorization_code": "34567",
+                            "status": "linked"
                         }
-                    ]
-                }
-            ]
-        }
-        r = c.post('/facebook', headers={'Content-Type': 'application/json'},
-                   data=json.dumps(data))
+                    }
+                ]
+            }
+        ]
+    }
+    r = c.post('/facebook', headers={'Content-Type': 'application/json'},
+               data=json.dumps(data))
+    return r
+
+
+def do_logout(c):
+    # account unlink request payload
+    data = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "entryid",
+                "time": 1488432412391,
+                "messaging": [
+                    {
+                        "recipient": {
+                            "id": "recipientid"
+                        },
+                        "timestamp": 1488432412391,
+                        "sender": {
+                            "id": "senderid"
+                        },
+                        "account_linking": {
+                            "status": "unlinked"
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    r = c.post('/facebook', headers={'Content-Type': 'application/json'},
+                data=json.dumps(data))
+    return r
+
+
+def test_facebook_loginout(app):
+    db.bind('sqlite', 'muorigin.sqlite', create_db=True)
+    db.generate_mapping(create_tables=True)
+    app.wsgi_app = orm.db_session(app.wsgi_app)
+
+    with app.test_client() as c:
+        r = do_login(c)
         assert '200 OK' == r.status
         data = r.data.decode('utf8')
         assert 'successfully logged in' in data
 
+        r = do_login(c)
+        assert '200 OK' == r.status
+        data = r.data.decode('utf8')
+        assert 'already logged in' in data
 
-def test_facebook_logout(app):
-    with app.test_client() as c:
-        data = {
-            "object": "page",
-            "entry": [
-                {
-                    "id": "entryid",
-                    "time": 1488432412391,
-                    "messaging": [
-                        {
-                            "recipient": {
-                                "id": "recipientid"
-                            },
-                            "timestamp": 1488432412391,
-                            "sender": {
-                                "id": "senderid"
-                            },
-                            "account_linking": {
-                                "status": "unlinked"
-                            }
-                        }
-                    ]
-                }
-            ]
-        }
-        r = c.post('/facebook', headers={'Content-Type': 'application/json'},
-                   data=json.dumps(data))
+        r = do_logout(c)
         assert '200 OK' == r.status
         data = r.data.decode('utf8')
         assert 'successfully logged out' in data
+
+        r = do_logout(c)
+        assert '200 OK' == r.status
+        data = r.data.decode('utf8')
+        assert 'not logged in' in data

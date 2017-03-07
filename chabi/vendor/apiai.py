@@ -16,9 +16,9 @@ def webhook():
     """"Webhook for API.AI.
 
     Note:
-        This end point is for direct request from API.AI(development phase).
+        This end point is for direct request from API.AI(web test).
         Not from real messenger requests. Messengers have their own end point,
-        where requests to API.AI are made by ApiAI request method.
+        where requests to API.AI are made by other request.
 
     """
     if request.method == 'GET':
@@ -65,10 +65,14 @@ class ApiAI(ChatbotBase):
         response = request.getresponse()
         return response
 
-    def handle_action(self, data):
+    def handle_action(self, sender_id, data):
         """Handle action to be done.
 
+        Resolve Chatbot API specific data, delegate them to
+        EventHandler.
+
         Args:
+            sender_id: Message sender id.
             data: Result json data from API.AI
 
         Returns:
@@ -81,8 +85,8 @@ class ApiAI(ChatbotBase):
         if action and 'actionIncomplete' in result and\
                 not result['actionIncomplete']:
             ca.logger.debug("action '{}' start: {}".format(action, data))
-            res = ca.evth.handle_action(data)
-            if res:
+            res = ca.evth.handle_action(sender_id, data)
+            if res is not None:
                 ca.logger.debug("action result: {}".format(res))
                 ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() -
                                                                  st))

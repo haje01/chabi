@@ -17,6 +17,10 @@ def analyze_and_action(sender_id, msg_text):
         `extract_text_msg` of Chatbot, extract text message part from Chatbot
             API return.
 
+    Args:
+        sender_id: Message sender id.
+        msg_text: Message text.
+
     Returns:
         dict: Handled result (contains return message)
     """
@@ -38,7 +42,7 @@ def analyze_and_action(sender_id, msg_text):
         return res
 
     # check action needs to be done
-    action_done, res = ca.chatbot.handle_action(data)
+    action_done, res = ca.chatbot.handle_action(sender_id, data)
     if action_done:
         ca.logger.info("action '{}' done".format(action_done))
         return res
@@ -84,7 +88,7 @@ class ChatbotBase(CommonBase):
     def request_analyze(self, sender_id, msg):
         raise NotImplementedError()
 
-    def handle_action(self, data):
+    def handle_action(self, sender_id, data):
         raise NotImplementedError()
 
     def handle_unknown(self):

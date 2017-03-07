@@ -4,13 +4,113 @@ import json
 import requests
 from flask import Blueprint, current_app as ca, request, render_template,\
     redirect, make_response
+from pony import orm
 
 from chabi import analyze_and_action
-from chabi import MessengerBase
+from chabi import MessengerBase, EventHandlerBase as _EventHandlerBase
+from chabi.models import AccountLink
 
 blueprint = Blueprint('facebook', __name__, template_folder='templates',
                       static_folder='static',
                       static_url_path='/static/facebook')
+
+def account_link_template(login_image_url, login_url):
+    """Return account link template for Facebook."""
+    return {
+        "message": {
+            "attachment": {
+                "type": "template",
+                "payload": {
+                    "template_type": "generic",
+                    "elements": [{
+                        "title": "Press following button to log in.",
+                        "image_url": login_image_url,
+                        "buttons": [{
+                            "type": "account_link",
+                            "url": login_url
+                        }]
+                    }]
+                }
+            }
+        }
+    }
+
+
+def account_unlink_template(login_image_url):
+    """Return account unlink template for Facebook."""
+    return {
+        "message": {
+            "attachment": {
+                "type": "template",
+                "payload": {
+                    "template_type": "generic",
+                    "elements": [{
+                        "title": "Press following button to log out.",
+                        "image_url": login_image_url,
+                        "buttons": [{
+                            "type": "account_unlink"
+                            }]
+                    }]
+                }
+            }
+        }
+    }
+
+
+
+class EventHandlerBase(_EventHandlerBase):
+    def __init__(self, app, start_msg="", login_image_url="", login_url=""):
+        """Init event handler.
+
+        Args:
+            app: Flask app instan:ce.
+            start_msg (optin): Start message when start button was pressed.
+            login_image_url (optional): Login image URL for login template.
+            login_url (optional): Login URL to where login request is directed.
+        """
+        super(EventHandlerBase, self).__init__(app)
+        self.start_msg = start_msg
+        self.login_image_url = login_image_url
+        self.login_url = login_url
+
+    def handle_action(self, sender_id, data):
+        """Handle common action for Facebook event.
+
+        Args:
+            sender_id: Message sender id.
+            data: Message data.
+        """
+        action = data.get("result").get("action")
+
+        if action == "login":
+            if len(orm.select(a for a in AccountLink if a.id == sender_id)) > 0:
+                return dict(message=dict(text="You are already logged in."))
+            return self.handle_action_login(sender_id)
+        elif action == 'logout':
+            al = orm.select(a for a in AccountLink if a.id == sender_id)[:]
+            if len(al) == 0:
+                return dict(message=dict(text="You are not logged in."))
+            return self.handle_action_logout(sender_id)
+
+    def handle_action_login(self, target_id):
+        """Handle login action.
+
+        Note:
+            login_image_url, login_url must have valid value.
+        """
+        assert len(self.login_image_url) > 0
+        assert len(self.login_url) > 0
+        return account_link_template(self.login_image_url, self.login_url)
+
+    def handle_action_logout(self, target_id):
+        """Handle logout action.
+
+        Note:
+            login_image_url, login_url must have valid value.
+        """
+        assert len(self.login_image_url) > 0
+        assert len(self.login_url) > 0
+        return account_unlink_template(self.login_image_url)
 
 
 @blueprint.route('/', methods=['GET'])
@@ -66,8 +166,7 @@ def login():
 
 @blueprint.route('/facebook', methods=['POST'])
 def webhook():
-    """Webhook for Facebook message."""
-    # endpoint for processing incoming messaging events
+    """Endpoint for processing incoming messaging events."""
     data = request.get_json()
     results = None
     if data is not None:
@@ -150,14 +249,18 @@ class Facebook(MessengerBase):
     def reply_text_message(self, sender_id, msg_text):
         """Reply to user message.
 
-        Dispatch proper reply message by analyzing user message via Chatbot
-        API, then send it.
+        Build reply message by analyzing user message via Chatbot API, then
+        send it.
+
+        Args:
+            sender_id: Message sender id.
+            msg_text: Received text message.
 
         Return:
             dict or str: Sent message content.
         """
         reply = analyze_and_action(sender_id, msg_text)
-        if not reply:
+        if reply is None:
             self.logger.warning("Fail to analyze message: {}".format(msg_text))
             reply = "Oops."
 
@@ -196,13 +299,12 @@ class Facebook(MessengerBase):
             if linked == 'unlinked':
                 self.logger.warning("recipient {} has unlinked "
                                     .format(recipient_id))
-                res = self.app.msgn.handle_account_unlink()
+                res = self.handle_account_unlink(sender_id)
             else:
                 self.logger.warning("recipient {} has linked "
                                     .format(recipient_id))
-                auth_code = mevent['account_linking']\
-                                        ['authorization_code']
-                res = self.app.msgn.handle_account_link(auth_code)
+                auth_code = mevent['account_linking']['authorization_code']
+                res = self.handle_account_link(sender_id, auth_code)
 
             self.send_message(sender_id, res)
             results.append(res)
@@ -235,8 +337,7 @@ class Facebook(MessengerBase):
 
         Args:
             data: JSON data from messenger.
-
-        Returns:
+Returns:
             list: Results from handling each messaging event in Facebook
                 payload.
         """
@@ -250,8 +351,38 @@ class Facebook(MessengerBase):
                     continue
         return results
 
-    def handle_account_link(self, code):
-        return dict(message=dict(text='You have successfully logged in.'))
+    def handle_account_link(self, sender_id, auth_code):
+        """Handle account link message event.
 
-    def handle_account_unlink(self):
-        return dict(message=dict(text='You have successfully logged out.'))
+        Create DB account link object, then return message.
+
+        Args:
+            sender_id: messenger user id
+            auth_code: Auth code to Facebook message check.
+
+        Returns:
+            dict: Structured result message.
+        """
+        if len(orm.select(a for a in AccountLink if a.id == sender_id)) > 0:
+            return dict(message=dict(text="You are already logged in."))
+        AccountLink(id=sender_id, auth_code=auth_code)
+
+        return dict(message=dict(text="You have successfully logged in."))
+
+    def handle_account_unlink(self, sender_id):
+        """Handle account unlink message event.
+
+        Delete DB account link object, then return message.
+
+        Args:
+            sender_id: messenger user id
+
+        Returns:
+            dict: Structured result message.
+        """
+        al = orm.select(a for a in AccountLink if a.id == sender_id)[:]
+        if len(al) == 0:
+            return dict(message=dict(text="You are not logged in."))
+
+        al[0].delete()
+        return dict(message=dict(text="You have successfully logged out."))
