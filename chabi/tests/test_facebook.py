@@ -5,7 +5,7 @@ from flask import Flask, Blueprint
 from pony import orm
 import pytest
 
-from chabi import ChatbotBase, EventHandlerBase
+from chabi import ChatbotBase
 from chabi.vendor.facebook import Facebook, EventHandlerBase, blueprint as fbbp
 from chabi.models import db
 
@@ -15,7 +15,7 @@ blueprint = Blueprint('dummy', __name__)
 
 class DummyChatbot(ChatbotBase):
     def __init__(self, app, access_token):
-        super(DummyChatbot, self).__init__(app, blueprint, access_token)
+        super(DummyChatbot, self).__init__(app, blueprint)
 
     def request_analyze(self, sender, msg):
         return None
@@ -124,7 +124,7 @@ def test_facebook_unsupport(app):
                             "message": {
                                 "mid": "mid.1488160039657:1d4b8ac609",
                                 "seq": 58863,
-                                "attachments": [ {
+                                "attachments": [{
                                         "type": "image",
                                         "payload": {
                                             "url": "https://scontent.xx.fbcdn.net/v/t34.0-12/16997218_1543730039000857_2025028651_n.gif?_nc_ad=z-m&oh=f1a2953fb8c25dfd56661e62ffc72435&oe=58B5BCE2"  # NOQA
@@ -239,7 +239,7 @@ def do_logout(c):
         ]
     }
     r = c.post('/facebook', headers={'Content-Type': 'application/json'},
-                data=json.dumps(data))
+               data=json.dumps(data))
     return r
 
 

@@ -6,13 +6,14 @@ from flask import Blueprint, current_app as ca, request, render_template,\
     redirect, make_response
 from pony import orm
 
-from chabi import analyze_and_action
+from chabi import analyze_and_action, action_by_analyzed, make_chatbot_session_id
 from chabi import MessengerBase, EventHandlerBase as _EventHandlerBase
 from chabi.models import AccountLink
 
 blueprint = Blueprint('facebook', __name__, template_folder='templates',
                       static_folder='static',
                       static_url_path='/static/facebook')
+
 
 def account_link_template(login_image_url, login_url):
     """Return account link template for Facebook."""
@@ -57,6 +58,53 @@ def account_unlink_template(login_image_url):
     }
 
 
+def postback_button_template(text, items):
+    buttons = []
+    for name, payload in items:
+        btn = {
+            "type": "postback",
+            "title": name,
+            "payload": payload
+        }
+        buttons.append(btn)
+
+    return {
+        "message": {
+            "attachment": {
+                "type": "template",
+                "payload": {
+                    "template_type": "button",
+                    "text": text,
+                    "buttons": buttons
+                }
+            }
+        }
+    }
+
+
+def quick_reply_template(text, items):
+    replies = []
+    for name, payload in items:
+        reply = {
+            "content_type": "text",
+            "title": name,
+            "payload": payload
+        }
+        replies.append(reply)
+
+    return {
+        "message": {
+            "text": text,
+            "quick_replies": replies
+        }
+    }
+
+
+def get_logged_account_link(target_id):
+    al = orm.select(a for a in AccountLink if a.id == target_id)[:]
+    if len(al) > 0:
+        return al[0]
+
 
 class EventHandlerBase(_EventHandlerBase):
     def __init__(self, app, start_msg="", login_image_url="", login_url=""):
@@ -73,23 +121,56 @@ class EventHandlerBase(_EventHandlerBase):
         self.login_image_url = login_image_url
         self.login_url = login_url
 
+    def confirm_intent(self, sender_id, confirm_msg, confirm_action):
+        """Confirm intent by quick reply."""
+        yesno = [
+            ('Yes', 'yes.' + confirm_action),
+            ('no', 'no.' + confirm_action),
+        ]
+        return quick_reply_template(confirm_msg, yesno)
+
+    def trigger_account_event(self, sender_id, payload):
+        alink = get_logged_account_link(sender_id)
+        if alink is None:
+            return "You need to login for the request."
+
+        event = payload.split('.')[1]
+        cb_session_id = make_chatbot_session_id(sender_id, ca)
+        res = self.app.chatbot.trigger_event(cb_session_id, event)
+        data = res.read()
+        data = json.loads(data)
+        return action_by_analyzed(sender_id, data)
+
+    def handle_quick_reply(self, sender_id, text, payload):
+        """Handle Facebook common quick reply.
+
+        Returns:
+            dict or str: Result text message.
+        """
+        if payload.startswith('no.'):
+            return "Ok. Please tell me about it  again."
+        elif payload.startswith('yes.'):
+            return self.trigger_account_event(sender_id, payload)
+
     def handle_action(self, sender_id, data):
         """Handle common action for Facebook event.
 
         Args:
             sender_id: Message sender id.
             data: Message data.
+
+        Returns:
+            dict: Response data
         """
         action = data.get("result").get("action")
 
         if action == "login":
-            if len(orm.select(a for a in AccountLink if a.id == sender_id)) > 0:
-                return dict(message=dict(text="You are already logged in."))
+            if get_logged_account_link(sender_id):
+                return "You are already logged in."
             return self.handle_action_login(sender_id)
         elif action == 'logout':
-            al = orm.select(a for a in AccountLink if a.id == sender_id)[:]
-            if len(al) == 0:
-                return dict(message=dict(text="You are not logged in."))
+            if not get_logged_account_link(sender_id):
+                return "You are not logged in."
             return self.handle_action_logout(sender_id)
 
     def handle_action_login(self, target_id):
@@ -185,6 +266,20 @@ def webhook():
     return res, 200
 
 
+def get_quickreply_payload(mevent):
+    try:
+        return mevent['message']['quick_reply']['payload']
+    except KeyError:
+        return
+
+
+def get_text_msg(mevent):
+    try:
+        return mevent['message']['text']
+    except KeyError:
+        return
+
+
 class Facebook(MessengerBase):
 
     def __init__(self, app, page_access_token, verify_token):
@@ -198,13 +293,10 @@ class Facebook(MessengerBase):
         super(Facebook, self).__init__(app, blueprint, page_access_token,
                                        verify_token)
 
-    def get_text_msg(self, mevent):
-        try:
-            return mevent['message']['text']
-        except KeyError:
-            return
-
     def _send_data(self, recipient_id, data):
+        if len(data) == 0:
+            return data
+
         if self.page_access_token is None:
             # Usually test case
             self.logger.warning("PAGE_ACCESS_TOKEN is None, Skip sending.")
@@ -235,9 +327,15 @@ class Facebook(MessengerBase):
     def send_message(self, recipient_id, data):
         """Send message to recipient.
 
+        Args:
+            data(str or dict): Message data to send.
+
         Return:
             dict: Sent Message content.
         """
+        data_is_str = type(data) is str
+        if data_is_str:
+            data = dict(message=dict(text=data))
         return self._send_data(recipient_id, data)
 
     def send_reply_action(self, recipient_id):
@@ -246,7 +344,7 @@ class Facebook(MessengerBase):
         }
         return self._send_data(recipient_id, data)
 
-    def reply_text_message(self, sender_id, msg_text):
+    def handle_text_message(self, sender_id, msg_text):
         """Reply to user message.
 
         Build reply message by analyzing user message via Chatbot API, then
@@ -260,14 +358,10 @@ class Facebook(MessengerBase):
             dict or str: Sent message content.
         """
         reply = analyze_and_action(sender_id, msg_text)
-        if reply is None:
+        if not reply:
             self.logger.warning("Fail to analyze message: {}".format(msg_text))
             reply = "Oops."
 
-        reply_is_str = type(reply) is str
-        if reply_is_str:
-            reply = dict(message=dict(text=reply))
-        self.send_message(sender_id, reply)
         return reply
 
     def _handle_msg_event(self, mevent, results):
@@ -289,9 +383,10 @@ class Facebook(MessengerBase):
         # handle postback
         if mevent.get("postback"):
             res = self.app.evth.handle_postback(mevent['postback'])
-            self.send_message(sender_id, res)
-            results.append(res)
-            return True
+            if res is not None:
+                self.send_message(sender_id, res)
+                results.append(res)
+                return True
 
         # account linking(login)
         if mevent.get("account_linking"):
@@ -310,7 +405,7 @@ class Facebook(MessengerBase):
             results.append(res)
             return True
 
-        msg_text = self.get_text_msg(mevent)
+        msg_text = get_text_msg(mevent)
         if msg_text is None:
             res = self.ask_enter_text_msg(sender_id)
             results.append(res)
@@ -318,9 +413,19 @@ class Facebook(MessengerBase):
 
         # someone sent us a message
         if mevent.get("message"):
-            res = self.reply_text_message(sender_id, msg_text)
-            results.append(res)
-            return True
+            qr_payload = get_quickreply_payload(mevent)
+            if qr_payload is not None:
+                # handle quick reply
+                res = self.app.evth.handle_quick_reply(sender_id, msg_text,
+                                                       qr_payload)
+            else:
+                # handle text message
+                res = self.handle_text_message(sender_id, msg_text)
+
+            if res:
+                self.send_message(sender_id, res)
+                results.append(res)
+                return True
 
         # delivery confirmation
         if mevent.get("delivery"):
@@ -363,11 +468,11 @@ Returns:
         Returns:
             dict: Structured result message.
         """
-        if len(orm.select(a for a in AccountLink if a.id == sender_id)) > 0:
-            return dict(message=dict(text="You are already logged in."))
+        if get_logged_account_link(sender_id):
+            return "You are already logged in."
         AccountLink(id=sender_id, auth_code=auth_code)
 
-        return dict(message=dict(text="You have successfully logged in."))
+        return "You have successfully logged in."
 
     def handle_account_unlink(self, sender_id):
         """Handle account unlink message event.
@@ -380,9 +485,9 @@ Returns:
         Returns:
             dict: Structured result message.
         """
-        al = orm.select(a for a in AccountLink if a.id == sender_id)[:]
-        if len(al) == 0:
-            return dict(message=dict(text="You are not logged in."))
+        al = get_logged_account_link(sender_id)
+        if not al:
+            return "You are not logged in."
 
-        al[0].delete()
-        return dict(message=dict(text="You have successfully logged out."))
+        al.delete()
+        return "You have successfully logged out."

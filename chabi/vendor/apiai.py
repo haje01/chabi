@@ -4,6 +4,7 @@ import json
 
 from flask import Blueprint, current_app as ca, request, make_response
 import apiai as api_ai
+from apiai import events
 
 from chabi import ChatbotBase
 
@@ -53,14 +54,22 @@ class ApiAI(ChatbotBase):
             app: Flask app instance.
             access_token: API.AI client access token.
         """
-        super(ApiAI, self).__init__(app, blueprint, access_token)
+        super(ApiAI, self).__init__(app, blueprint)
+        self.ai = api_ai.ApiAI(access_token)
 
-    def request_analyze(self, sender_id, msg):
-        token = self.access_token
-        ai = api_ai.ApiAI(token)
-        request = ai.text_request()
+    def request_analyze(self, session_id, msg):
+        """Request text analysis by Chatbot API.
+
+        Args:
+            session_id: Chatbot Session ID. Made of sender_id + app start time.
+            msg: Text to analyze.
+
+        Returns:
+            str or HTTP Stream: Analyzed result in JSON format.
+        """
+        request = self.ai.text_request()
         request.lang = 'en'
-        request.session_id = sender_id
+        request.session_id = session_id
         request.query = msg
         response = request.getresponse()
         return response
@@ -85,7 +94,15 @@ class ApiAI(ChatbotBase):
         if action and 'actionIncomplete' in result and\
                 not result['actionIncomplete']:
             ca.logger.debug("action '{}' start: {}".format(action, data))
-            res = ca.evth.handle_action(sender_id, data)
+
+            if action.startswith('confirm.'):
+                confirm_msg = result['fulfillment']['speech']
+                confirm_action = action.split('.')[1]
+                res = ca.evth.confirm_intent(sender_id, confirm_msg,
+                                             confirm_action)
+            else:
+                res = ca.evth.handle_action(sender_id, data)
+
             if res is not None:
                 ca.logger.debug("action result: {}".format(res))
                 ca.logger.debug('action elapsed: {0:.2f}'.format(time.time() -
@@ -94,7 +111,7 @@ class ApiAI(ChatbotBase):
         return False, None
 
     def handle_incomplete(self, data):
-        """Handle incomplete action(usually fi entity filling).
+        """Handle incomplete action(usually for entity filling).
 
         Returns:
             boolean: Whether action incomplete or not.
@@ -119,6 +136,24 @@ class ApiAI(ChatbotBase):
         return False, None
 
     def extract_text_msg(self, data):
+        """Extract text message from payload."""
         result = data['result']
         if 'fulfillment' in result and result['fulfillment']:
             return result['fulfillment']['speech']
+
+    def trigger_event(self, session_id, event_name):
+        """Trigger Chatbot event to proceed next intent.
+
+        Args:
+            session_id: Chatbot Session ID. Made of sender_id + app start time.
+            event_name: Name of event.
+
+        Returns:
+            str or HTTP Stream: Analyzed result in JSON format.
+        """
+        event = events.Event(event_name)
+        request = self.ai.event_request(event)
+        request.lang = 'en'
+        request.session_id = session_id
+        response = request.getresponse()
+        return response
