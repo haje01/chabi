@@ -307,6 +307,30 @@ class Facebook(MessengerBase):
 
         return reply
 
+    def _handle_postback_msg(self, postback, sender_id, results):
+        res = self.app.evth.handle_postback(postback)
+        if res is not None:
+            self.send_message(sender_id, res)
+            results.append(res)
+            return True
+
+    def _handle_accntlink_msg(self, accnt_link, sender_id, recipient_id,
+                              results):
+        linked = accnt_link['status']
+        if linked == 'unlinked':
+            self.logger.warning("recipient {} has unlinked "
+                                .format(recipient_id))
+            res = self.handle_account_unlink(sender_id)
+        else:
+            self.logger.warning("recipient {} has linked "
+                                .format(recipient_id))
+            auth_code = accnt_link['authorization_code']
+            res = self.handle_account_link(sender_id, auth_code)
+
+        self.send_message(sender_id, res)
+        results.append(res)
+        return True
+
     def _handle_msg_event(self, mevent, results):
         """Handle each messaging event within payload.
 
@@ -324,29 +348,15 @@ class Facebook(MessengerBase):
         self.send_reply_action(sender_id)
 
         # handle postback
-        if mevent.get("postback"):
-            res = self.app.evth.handle_postback(mevent['postback'])
-            if res is not None:
-                self.send_message(sender_id, res)
-                results.append(res)
-                return True
+        postback = mevent.get("postback")
+        if postback is not None:
+            return self._handle_postback_msg(postback, sender_id, results)
 
         # account linking(login)
-        if mevent.get("account_linking"):
-            linked = mevent['account_linking']['status']
-            if linked == 'unlinked':
-                self.logger.warning("recipient {} has unlinked "
-                                    .format(recipient_id))
-                res = self.handle_account_unlink(sender_id)
-            else:
-                self.logger.warning("recipient {} has linked "
-                                    .format(recipient_id))
-                auth_code = mevent['account_linking']['authorization_code']
-                res = self.handle_account_link(sender_id, auth_code)
-
-            self.send_message(sender_id, res)
-            results.append(res)
-            return True
+        accnt_link = mevent.get("account_linking")
+        if accnt_link is not None:
+            return self._handle_accntlink_msg(accnt_link, sender_id,
+                                              recipient_id, results)
 
         msg_text = get_text_msg(mevent)
         if msg_text is None:
@@ -369,16 +379,6 @@ class Facebook(MessengerBase):
                 self.send_message(sender_id, res)
                 results.append(res)
                 return True
-
-        # delivery confirmation
-        if mevent.get("delivery"):
-            pass
-        # optin confirmation
-        if mevent.get("optin"):
-            pass
-        # user clicked/tapped "postback" button in earlier message
-        if mevent.get("postback"):
-            pass
 
     def handle_msg_data(self, data):
         """Entry for handling message payload from Facebook.

@@ -12,18 +12,14 @@ def safe_db_init(db, sqlite_file):
         handle error of duplicated binding.
     """
     try:
-        db.bind('sqlite', sqlite_file)
+        db.bind('sqlite', sqlite_file, create_db=True)
     except TypeError:
         pass
-
-    if sqlite_file == ':memory:':
+    else:
         try:
-            db.generate_mapping(check_tables=False)
+            db.generate_mapping(create_tables=True)
         except orm.core.MappingError:
             pass
-        db.drop_all_tables(with_all_data=True)
-
-    db.create_tables()
 
 
 class AccountLink(db.Entity):
