@@ -1,0 +1,14 @@
+{
+    "message": {
+        "text": {{text|tojson}},
+        "quick_replies": [
+            {% for title, payload in items -%}
+            {
+                "content_type": "text",
+                "title": "{{title}}",
+                "payload": "{{payload}}"
+            }{% if not loop.last %}, {% endif %}
+            {%- endfor %}
+        ]
+    }
+}
