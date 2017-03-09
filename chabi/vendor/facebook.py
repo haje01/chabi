@@ -359,6 +359,7 @@ class Facebook(MessengerBase):
                                               recipient_id, results)
 
         msg_text = get_text_msg(mevent)
+        # if other than text message, warn
         if msg_text is None:
             res = self.ask_enter_text_msg(sender_id)
             results.append(res)
@@ -366,19 +367,24 @@ class Facebook(MessengerBase):
 
         # someone sent us a message
         if mevent.get("message"):
-            qr_payload = get_quickreply_payload(mevent)
-            if qr_payload is not None:
-                # handle quick reply
-                res = self.app.evth.handle_quick_reply(sender_id, msg_text,
-                                                       qr_payload)
-            else:
-                # handle text message
-                res = self.handle_text_message(sender_id, msg_text)
+            return self._handle_quickreply_or_text_msg(mevent, msg_text,
+                                                       sender_id, results)
 
-            if res:
-                self.send_message(sender_id, res)
-                results.append(res)
-                return True
+    def _handle_quickreply_or_text_msg(self, mevent, msg_text, sender_id,
+                                       results):
+        qr_payload = get_quickreply_payload(mevent)
+        if qr_payload is not None:
+            # handle quick reply
+            res = self.app.evth.handle_quick_reply(sender_id, msg_text,
+                                                   qr_payload)
+        else:
+            # handle text message
+            res = self.handle_text_message(sender_id, msg_text)
+
+        if res:
+            self.send_message(sender_id, res)
+            results.append(res)
+            return True
 
     def handle_msg_data(self, data):
         """Entry for handling message payload from Facebook.
