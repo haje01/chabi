@@ -19,8 +19,8 @@ blueprint = Blueprint('facebook', __name__,
 
 def account_link_template(image_url, login_url):
     """Return account link template for Facebook."""
-    data =  render_template('facebook/account_link.json', image_url=image_url,
-                            login_url=login_url)
+    data = render_template('facebook/account_link.json', image_url=image_url,
+                           login_url=login_url)
     return json.loads(data)
 
 
@@ -37,21 +37,8 @@ def postback_button_template(text, buttons):
 
 
 def quick_reply_template(text, items):
-    replies = []
-    for name, payload in items:
-        reply = {
-            "content_type": "text",
-            "title": name,
-            "payload": payload
-        }
-        replies.append(reply)
-
-    return {
-        "message": {
-            "text": text,
-            "quick_replies": replies
-        }
-    }
+    data = render_template('facebook/quick_reply.json', text=text, items=items)
+    return json.loads(data)
 
 
 def get_logged_account_link(target_id):
