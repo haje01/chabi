@@ -268,3 +268,25 @@ def test_facebook_loginout(app):
         assert '200 OK' == r.status
         data = r.data.decode('utf8')
         assert 'not logged in' in data
+
+
+def test_facebook_template(app):
+    from flask import render_template
+
+    with app.app_context():
+        data = render_template('facebook/account_link.json', image_url="image",
+                               login_url='url')
+        assert '"url": "url"' in data
+
+        buttons = []
+        for i in range(3):
+            btn = {
+                "type": "postback",
+                "title": i,
+                "payload": i
+            }
+        buttons.append(btn)
+
+        data = render_template('facebook/buttons.json', text="test",
+                               buttons=[('t1', 'p1'), ('t2', 'p2')])
+        json.loads(data)
