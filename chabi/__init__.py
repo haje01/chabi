@@ -220,6 +220,14 @@ class EventHandlerBase(CommonBase):
         raise NotImplementedError()
 
     def handle_postback(self, msg):
+        """Handle postback event.
+
+        Args:
+            msg: Message data.
+
+        Returns:
+            str: Response message.
+        """
         raise NotImplementedError()
 
     def handle_quick_reply(self, sender_id, text, payload):

@@ -6,7 +6,8 @@ from flask import Blueprint, current_app as ca, request, render_template,\
     redirect, make_response
 from pony import orm
 
-from chabi import analyze_and_action, action_by_analyzed, make_chatbot_session_id
+from chabi import analyze_and_action, action_by_analyzed,\
+    make_chatbot_session_id
 from chabi import MessengerBase, EventHandlerBase as _EventHandlerBase
 from chabi.models import AccountLink
 
@@ -132,7 +133,8 @@ class EventHandlerBase(_EventHandlerBase):
     def trigger_account_event(self, sender_id, payload):
         alink = get_logged_account_link(sender_id)
         if alink is None:
-            return "You need to login for the request."
+            return "Sorry, You need to login for the request. Type 'login' to "\
+                "login, and try it again."
 
         event = payload.split('.')[1]
         cb_session_id = make_chatbot_session_id(sender_id, ca)
@@ -148,7 +150,7 @@ class EventHandlerBase(_EventHandlerBase):
             dict or str: Result text message.
         """
         if payload.startswith('no.'):
-            return "Ok. Please tell me about it  again."
+            return "OK. Please tell me about it more specifically."
         elif payload.startswith('yes.'):
             return self.trigger_account_event(sender_id, payload)
 
