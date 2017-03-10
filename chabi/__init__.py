@@ -223,11 +223,11 @@ class EventHandlerBase(CommonBase):
     def handle_action(self, msg):
         raise NotImplementedError()
 
-    def handle_postback(self, msg):
+    def handle_postback(self, payload):
         """Handle postback event.
 
         Args:
-            msg: Message data.
+            payload(dict): Postback payload.
 
         Returns:
             str: Response message.

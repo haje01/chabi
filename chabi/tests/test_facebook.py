@@ -29,9 +29,9 @@ class DummyChatbot(ChatbotBase):
 
 class EventHandler(EventHandlerBase):
 
-    def handle_postback(self, msg):
-        payload = msg['payload']
-        if payload == 'START_BUTTON':
+    def handle_postback(self, payload):
+        ptype = payload['type']
+        if ptype == 'START_BUTTON':
             res = "start button pressed"
         else:
             res = "Unknown postback payload '{}'".format(payload)
@@ -168,7 +168,7 @@ def test_facebook_start(app):
                                 "id": "1522187434460061"
                             },
                             "postback": {
-                                "payload": "START_BUTTON"
+                                "payload": "{\"type\": \"START_BUTTON\"}"
                             }
                         }
                     ]
@@ -244,7 +244,7 @@ def do_logout(c):
 
 
 def test_facebook_loginout(app):
-    db.bind('sqlite', 'muorigin.sqlite', create_db=True)
+    db.bind('sqlite', ':memory:', create_db=True)
     db.generate_mapping(create_tables=True)
     app.wsgi_app = orm.db_session(app.wsgi_app)
 

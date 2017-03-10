@@ -12,7 +12,6 @@ from chabi import analyze_and_action, action_by_analyzed,\
     make_chatbot_session_id, request_postback_token
 from chabi import MessengerBase, EventHandlerBase as _EventHandlerBase
 from chabi.models import AccountLink, PostbackToken
-from chabi.const import POSTBACK_TEST_TOKEN
 
 
 blueprint = Blueprint('facebook', __name__,
@@ -60,17 +59,17 @@ def get_logged_account_link(target_id):
 
 
 class EventHandlerBase(_EventHandlerBase):
-    def __init__(self, app, start_msg="", login_image_url="", login_url=""):
+    def __init__(self, app, help_tmpl="", login_image_url="", login_url=""):
         """Init event handler.
 
         Args:
             app: Flask app instan:ce.
-            start_msg (optin): Start message when start button was pressed.
+            help_tmpl (optin): Help message template.
             login_image_url (optional): Login image URL for login template.
             login_url (optional): Login URL to where login request is directed.
         """
         super(EventHandlerBase, self).__init__(app)
-        self.start_msg = start_msg
+        self.help_tmpl = help_tmpl
         self.login_image_url = login_image_url
         self.login_url = login_url
 
@@ -104,6 +103,12 @@ class EventHandlerBase(_EventHandlerBase):
             return "OK. Please tell me about it more specifically."
         elif payload.startswith('yes.'):
             return self.trigger_account_event(sender_id, payload)
+
+    def handle_action_help(self):
+        return render_template(self.help_tmpl, start=False)
+
+    def handle_postback_startbtn(self, msg):
+        return render_template(self.help_tmpl, start=True)
 
     def handle_action(self, sender_id, data):
         """Handle common action for Facebook event.
@@ -334,10 +339,10 @@ class Facebook(MessengerBase):
         else:
             # app defined button payload
             token = payload['token']
-            pid = payload['id']
             pts = PostbackToken.select(lambda t: t.value == token)[:]
             if len(pts) == 0:
-                self.logger.error("Invalid postback: payload '{}'".format(payload))
+                self.logger.error("Invalid postback: payload "
+                                  "'{}'".format(payload))
                 res = "Invalid postback."
 
             pt = pts[0]
@@ -349,7 +354,7 @@ class Facebook(MessengerBase):
                 need_handle = True
 
         if need_handle:
-            res = self.app.evth.handle_postback(postback)
+            res = self.app.evth.handle_postback(payload)
 
         if res is not None:
             self.send_message(sender_id, res)
