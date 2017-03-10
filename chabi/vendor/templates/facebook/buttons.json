@@ -1,0 +1,19 @@
+{
+    "message": {
+        "attachment": {
+            "type": "template",
+            "payload": {
+                "template_type": "button",
+                "text": {{text|tojson}},
+                "buttons": [{% for title, payload in buttons -%} {
+                        "type": "postback",
+                        "title": "{{title}}",
+                        "payload": {{payload|tojson}}
+                    }{% if not loop.last %}, {% endif %}
+                {%- endfor %} 
+                ]
+            }
+        }
+    }
+}
+

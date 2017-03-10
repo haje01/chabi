@@ -1,0 +1,18 @@
+{
+	"message": {
+		"attachment": {
+			"type": "template",
+			"payload": {
+				"template_type": "generic",
+				"elements": [{
+					"title": "Press following button to log in.",
+					"image_url": "{{image_url}}",
+					"buttons": [{
+						"type": "account_link",
+						"url": "{{login_url}}"
+					}]
+				}]
+			}
+		}
+	}
+}

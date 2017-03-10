@@ -8,10 +8,8 @@ from flask import Flask
 import pytest
 import apiai
 
-from chabi import init_action
-from chabi.vendor.apiai import init_apiai
-from chabi.vendor.facebook import init_facebook
-from chabi.vendor.dummy import init_dummy_chatbot
+from chabi import EventHandlerBase
+from chabi.vendor.apiai import ApiAI
 
 
 @pytest.fixture
@@ -231,11 +229,14 @@ def test_apiai_webhook(sess):
     access_token = os.environ.get('APIAI_API_ACCESS_TOKEN')
     assert access_token is not None
 
-    def do_action(data):
-        return dict(result=data['foo'])
+    class EventHandler(EventHandlerBase):
+        def handle_action(self, data):
+            return dict(result=data['foo'])
 
-    app = init_apiai(Flask(__name__), access_token)
-    app = init_action(app, do_action)
+    app = Flask(__name__)
+    ApiAI(app, access_token)
+    EventHandler(app)
+    app.config['TESTING'] = True
 
     with app.test_client() as c:
         r = c.get('/apiai')
@@ -247,55 +248,3 @@ def test_apiai_webhook(sess):
                    data=json.dumps(data))
         assert '200 OK' == r.status
         assert 'result' in r.data.decode('utf8')
-
-
-def test_facebook():
-    """Facebook webhook test."""
-    app = init_facebook(Flask(__name__), 'access_token', 'verify_token')
-    app = init_dummy_chatbot(app, 'cb_access_token')
-
-    # default GET
-    with app.test_client() as c:
-        r = c.get('/facebook')
-        assert 'OK' == r.data.decode('utf8')
-        assert '200 OK' == r.status
-
-    # GET with bad verify token
-    with app.test_client() as c:
-        r = c.get('/facebook?hub.mode=subscribe&hub.challenge=access_token'
-                  '&hub.verify_token=BAD')
-        assert 'Verification token mismatch' == r.data.decode('utf8')
-        assert '403 FORBIDDEN' == r.status
-
-    # GET with good verify token
-    with app.test_client() as c:
-        r = c.get('/facebook?hub.mode=subscribe&hub.challenge=access_token'
-                  '&hub.verify_token=verify_token')
-        assert 'access_token' == r.data.decode('utf8')
-        assert '200 OK' == r.status
-
-    # POST to facebook webhook
-    with app.test_client() as c:
-        data = {
-            'object': 'page',
-            'entry': [
-                {
-                    'messaging': [
-                        {
-                            'sender': {
-                                'id': 'sender_id'
-                            },
-                            'recipient': {
-                                'id': 'recipient_id'
-                            },
-                            'message': {
-                                'text': 'message_text'
-                            }
-                        }
-                    ]
-                }
-            ]
-        }
-        r = c.post('/facebook', headers={'Content-Type': 'application/json'},
-                   data=json.dumps(data))
-        assert '200 OK' == r.status
