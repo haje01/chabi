@@ -1,6 +1,10 @@
+import os
 import logging
 from logging import Formatter
 from logging.handlers import RotatingFileHandler
+import random
+import string
+import hashlib
 
 
 def init_logger(app, filename, log_level, werkzeug_log=True, max_bytes=1048576,
@@ -16,3 +20,7 @@ def init_logger(app, filename, log_level, werkzeug_log=True, max_bytes=1048576,
     handler.setFormatter(formatter)
     handler.setLevel(log_level)
     app.logger.addHandler(handler)
+
+
+def generate_random_token():
+    return hashlib.sha1(os.urandom(128)).hexdigest()

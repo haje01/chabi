@@ -8,7 +8,7 @@
                 "buttons": [{% for title, payload in buttons -%} {
                         "type": "postback",
                         "title": "{{title}}",
-                        "payload": "{{payload}}"
+                        "payload": {{payload|tojson}}
                     }{% if not loop.last %}, {% endif %}
                 {%- endfor %} 
                 ]

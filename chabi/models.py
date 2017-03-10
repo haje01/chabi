@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pony import orm
 from pony.orm import db_session  # NOQA
 
@@ -25,3 +27,10 @@ def safe_db_init(db, sqlite_file):
 class AccountLink(db.Entity):
     id = orm.PrimaryKey(str)
     auth_code = orm.Required(str)
+
+
+class PostbackToken(db.Entity):
+    id = orm.PrimaryKey(int, auto=True)
+    value = orm.Required(str)
+    issue_dt = orm.Required(datetime)
+    close_dt = orm.Optional(datetime)

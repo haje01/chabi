@@ -4,6 +4,10 @@ from datetime import datetime
 
 from flask import current_app as ca
 
+from chabi.models import PostbackToken
+from chabi.util import generate_random_token
+from chabi.const import POSTBACK_TEST_TOKEN
+
 
 def analyze_and_action(sender_id, msg_text):
     """Analyze message and do action for the result.
@@ -247,3 +251,13 @@ def make_chatbot_session_id(msgn_id, app):
     """
     fmt = '%Y-%m-%d %H:%M:%S'
     return "{}_{}".format(msgn_id, app.cb_start_dt.strftime(fmt))
+
+
+def request_postback_token():
+    if ca.config['TESTING']:
+        token = POSTBACK_TEST_TOKEN
+    else:
+        token = generate_random_token()
+    dt = datetime.fromtimestamp(time.time())
+    ptoken = PostbackToken(value=token, issue_dt=dt)
+    return ptoken

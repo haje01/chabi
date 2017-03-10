@@ -1,5 +1,7 @@
 """Messenger API implementation of Facebook."""
+import time
 import json
+from datetime import datetime
 
 import requests
 from flask import Blueprint, current_app as ca, request, render_template,\
@@ -7,9 +9,11 @@ from flask import Blueprint, current_app as ca, request, render_template,\
 from pony import orm
 
 from chabi import analyze_and_action, action_by_analyzed,\
-    make_chatbot_session_id
+    make_chatbot_session_id, request_postback_token
 from chabi import MessengerBase, EventHandlerBase as _EventHandlerBase
-from chabi.models import AccountLink
+from chabi.models import AccountLink, PostbackToken
+from chabi.const import POSTBACK_TEST_TOKEN
+
 
 blueprint = Blueprint('facebook', __name__,
                       template_folder='templates',
@@ -31,8 +35,16 @@ def account_unlink_template(login_image_url):
     return json.loads(data)
 
 
-def postback_button_template(text, buttons):
-    data = render_template('facebook/buttons.json', text=text, buttons=buttons)
+def make_postback_buttons(type, msg, items):
+    buttons = []
+    ptoken = request_postback_token()
+
+    for name, bid in items:
+        payload = json.dumps(dict(type=type, token=ptoken.value, id=bid))
+        btn = (name, payload)
+        buttons.append(btn)
+
+    data = render_template('facebook/buttons.json', text=msg, buttons=buttons)
     return json.loads(data)
 
 
@@ -308,7 +320,37 @@ class Facebook(MessengerBase):
         return reply
 
     def _handle_postback_msg(self, postback, sender_id, results):
-        res = self.app.evth.handle_postback(postback)
+        """Handle postback message.
+
+        Note: It is important to verify the postback is valid.
+            Does it have valid token?
+            Didn't it already processed?
+        """
+        need_handle = False
+        payload = json.loads(postback['payload'])
+        if 'token' not in payload:
+            # predefined button payload
+            need_handle = True
+        else:
+            # app defined button payload
+            token = payload['token']
+            pid = payload['id']
+            pts = PostbackToken.select(lambda t: t.value == token)[:]
+            if len(pts) == 0:
+                self.logger.error("Invalid postback: payload '{}'".format(payload))
+                res = "Invalid postback."
+
+            pt = pts[0]
+            if pt.close_dt is not None:
+                res = "The choice is not valid anymore."
+            else:
+                # set done time
+                pt.close_dt = datetime.fromtimestamp(time.time())
+                need_handle = True
+
+        if need_handle:
+            res = self.app.evth.handle_postback(postback)
+
         if res is not None:
             self.send_message(sender_id, res)
             results.append(res)
