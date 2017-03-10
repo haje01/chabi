@@ -107,7 +107,7 @@ class EventHandlerBase(_EventHandlerBase):
     def handle_action_help(self):
         return render_template(self.help_tmpl, start=False)
 
-    def handle_postback_startbtn(self, msg):
+    def handle_postback_startbtn(self):
         return render_template(self.help_tmpl, start=True)
 
     def handle_action(self, sender_id, data):
