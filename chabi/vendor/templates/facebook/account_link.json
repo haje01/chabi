@@ -5,7 +5,7 @@
 			"payload": {
 				"template_type": "generic",
 				"elements": [{
-					"title": "Press following button to log in.",
+					"title": "Press following to log in.",
 					"image_url": "{{image_url}}",
 					"buttons": [{
 						"type": "account_link",

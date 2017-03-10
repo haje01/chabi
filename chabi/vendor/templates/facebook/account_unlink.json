@@ -5,7 +5,7 @@
             "payload": {
                 "template_type": "generic",
                 "elements": [{
-                    "title": "Press following button to log out.",
+                    "title": "Press following to log out.",
                     "image_url": "{{image_url}}",
                     "buttons": [{
                         "type": "account_unlink"
